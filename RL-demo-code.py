@@ -85,7 +85,8 @@ def train_step(optimising_net, target_net, memory, optimser, ep_no):
     loss.backward()
     optimser.step()
 
-    if ep_no % 50:
+    # at regular intervals (every 50 episodes) bring target network up to date with optimising network
+    if ep_no % 50 == 0 and ep != 0:
         target_net.load_state_dict(optimising_net.state_dict())
 
 
@@ -119,7 +120,7 @@ target_network = Network(state_space_size, action_space_size)
 target_network.load_state_dict(optimising_network.state_dict())
 replay_buffer = Buffer()
 
-no_eps = 10000
+no_eps = 5000
 marking = []
 means = []
 printing_rate = 50
@@ -135,7 +136,7 @@ for ep in range(no_eps):
     while True:
         time_step += 1
         action = optimising_network.step(torch.from_numpy(state).float().unsqueeze(0), epsilon)
-        successor, reward, terminal, info = env.step(action)
+        successor, reward, terminal, _ = env.step(action)
 
         terminal_mask = 0.0 if terminal else 1.0
         transition = (state, action, reward/100.0, successor, terminal_mask)
