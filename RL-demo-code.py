@@ -19,23 +19,23 @@ class Buffer:
 
     def sample(self, size):
         batch = random.sample(self.buffer, size)
-        Ss, As, Rs, Succs, Terms = [], [], [], [], []
+        states, actions, rewards, successors, terminal_masks = [], [], [], [], []
 
-        for transition in batch:
-            s, a, r, succ, term = transition
-            Ss.append(s)
-            As.append([a])
-            Rs.append([r])
-            Succs.append(succ)
-            Terms.append([term])
+        for experience in batch:
+            s, a, r, succ, term = experience
+            states.append(s)
+            actions.append([a])
+            rewards.append([r])
+            successors.append(succ)
+            terminal_masks.append([term])
 
-        S_tensor = torch.tensor(Ss, dtype=torch.float)
-        A_tensor = torch.tensor(As)
-        R_tensor = torch.tensor(Rs)
-        Succ_tensor = torch.tensor(Succs, dtype=torch.float)
-        Term_tensor = torch.tensor(Terms)
+        state_tensor = torch.tensor(states, dtype=torch.float)
+        action_tensor = torch.tensor(actions)
+        reward_tensor = torch.tensor(rewards)
+        successor_tensor = torch.tensor(successors, dtype=torch.float)
+        terminal_tensor = torch.tensor(terminal_masks)
 
-        return S_tensor, A_tensor, R_tensor, Succ_tensor, Term_tensor
+        return state_tensor, action_tensor, reward_tensor, successor_tensor, terminal_tensor
 
     def size(self):
         return len(self.buffer)
@@ -56,41 +56,52 @@ class Network(nn.Module):
 
         return outputs
 
-    def step(self, inputs, epsilon):
+    def step(self, inputs, eps):
         outputs = self.forward(inputs)
 
-        exploration_probability = random.random()
-        if exploration_probability < epsilon:
+        expl_probability = random.random()
+        if expl_probability < eps:
             return random.randint(0, 1)
         else:
             return outputs.argmax().item()
 
 
-def train_step(optimiser_network, target_network, memory, optimser):
-    s, a, r, succ, terminal = memory.sample(batch_size)
+def train_step(optimising_net, target_net, memory, optimser, ep_no):
+    s, a, r, succ, term = memory.sample(batch_size)
 
-    qvalues = optimiser_network(s)
+    qvalues = optimising_net(s)
     q_sa = qvalues.gather(1, a)
 
-    succ_qvalues = target_network(succ)
+    # generate q values for all actions from the successor state
+    succ_qvalues = target_net(succ)
+    # generate tensor of the maximal action for the successor state for each element in the batch
     max_q_succ = succ_qvalues.max(1)[0].unsqueeze(1)
-    q_target = r + gamma * max_q_succ * terminal
+    # Q-target = reward + discounted maximal value of successor state (over all actions)
+    # if terminal, just reward (mask out rest)
+    q_target = r + gamma * max_q_succ * term
 
     loss = funt.smooth_l1_loss(q_sa, q_target)
     optimser.zero_grad()
     loss.backward()
     optimser.step()
 
+    if ep_no % 50:
+        target_net.load_state_dict(optimising_net.state_dict())
 
+
+# initialise environment
 env = gym.make('CartPole-v0')
 env.reset()
 
-# hyperparameters
-
-alpha = 0.0005
+# network hyperparameters
+alpha = 0.005
 gamma = 0.98
 max_buffer_size = 50000
 batch_size = 32
+min_epsilon = 0.01
+max_epsilon = 0.08
+epsilon_anneal_rate = 0.01/200
+training_init_size = 2000
 
 # seed behaviour of spaces such that they are reproducible
 seed = 742
@@ -100,6 +111,7 @@ np.random.seed(seed)
 env.seed(seed)
 env.action_space.seed(seed)
 
+# generate replay buffer and agent's two networks: optimising and target (init target params equal to optimising ones)
 state_space_size = np.array(env.observation_space.shape).prod()
 action_space_size = env.action_space.n
 optimising_network = Network(state_space_size, action_space_size)
@@ -107,12 +119,7 @@ target_network = Network(state_space_size, action_space_size)
 target_network.load_state_dict(optimising_network.state_dict())
 replay_buffer = Buffer()
 
-no_eps = 3000
-min_epsilon = 0.01
-max_epsilon = 0.08
-epsilon_anneal_rate = 0.01/200
-training_init_size = 2000
-ep_rewards = []
+no_eps = 10000
 marking = []
 means = []
 printing_rate = 50
@@ -140,33 +147,24 @@ for ep in range(no_eps):
             break
 
     if replay_buffer.size() > training_init_size:
-        train_step(optimising_network, target_network, replay_buffer, optimiser)
+        train_step(optimising_network, target_network, replay_buffer, optimiser, ep)
 
-    ep_rewards.append(total_reward)
     marking.append(total_reward)
     if ep % marking_rate == 0:
+        std = np.array(marking).std()
         mean = np.array(marking).mean()
         means.append(mean)
-        print("marking, episode: {}, total reward: {:.1f}, mean score: {:.2f}, std score: {:.2f}".format(ep, total_reward, mean, np.array(marking).std()))
+        print("marking, episode: {}, total reward: {:.1f}, mean score: {:.2f}, std score: {:.2f}"
+              .format(ep, total_reward, mean, std))
         marking = []
 
-    if ep % printing_rate == 0 and ep != 0:
-        target_network.load_state_dict(optimising_network.state_dict())
-        print("episode: {}, total reward: {:.1f}, epsilon: {:.2f}".format(ep, total_reward, epsilon))
+    # if ep % printing_rate == 0 and ep != 0:
+        # print("episode: {}, total reward: {:.1f}, epsilon: {:.2f}".format(ep, total_reward, epsilon))
 
-# no_sections = 100
-# section_size = int(no_eps/no_sections)
-# averages = []
-# for i in range(no_sections):
-#     low = i*section_size
-#     high = (i+1)*section_size
-#     avg = sum(ep_rewards[low:high]) / section_size
-#     averages.append(avg)
-
-# Plot the reward array showing the progression of the agents success
-# reward_samples = [ep_rewards[i] for i in range(len(ep_rewards)) if i % 50 == 0]
+# Plot the mean reward array showing the progression of the agents success
 plt.plot(means, color='red')
 plt.xlabel('Episode')
 plt.ylabel('Reward')
 plt.title('Training progression')
+plt.savefig('training_progression.png')
 plt.show()
