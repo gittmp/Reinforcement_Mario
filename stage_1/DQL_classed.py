@@ -79,8 +79,8 @@ class Agent:
                  min_epsilon=0.01,
                  max_epsilon=0.1,
                  annealing_rate=0.0005,
-                 init_training=1500,
-                 update_target_rate=10):
+                 init_training=2000,
+                 update_target_rate=20):
 
         # set hyperparameters
         self.alpha = alpha
@@ -111,31 +111,32 @@ class Agent:
 
     def train_step(self, ep_no):
         if self.replay_buffer.size() > self.init_training:
-            s, a, r, succ, term = self.replay_buffer.sample(self.batch_size)
+            for i in range(10):
+                s, a, r, succ, term = self.replay_buffer.sample(self.batch_size)
 
-            qvalues = self.optimising_network(s)
-            q_sa = qvalues.gather(1, a)
+                qvalues = self.optimising_network(s)
+                q_sa = qvalues.gather(1, a)
 
-            # generate q values for all actions from the successor state
-            succ_qvalues = self.target_network(succ)
-            # generate tensor of the maximal action for the successor state for each element in the batch
-            max_q_succ = succ_qvalues.max(1)[0].unsqueeze(1)
-            # Q-target = reward + discounted maximal value of successor state (over all actions)
-            # if terminal, just reward (mask out rest)
-            q_target = r + self.gamma * max_q_succ * term
+                # generate q values for all actions from the successor state
+                succ_qvalues = self.target_network(succ)
+                # generate tensor of the maximal action for the successor state for each element in the batch
+                max_q_succ = succ_qvalues.max(1)[0].unsqueeze(1)
+                # Q-target = reward + discounted maximal value of successor state (over all actions)
+                # if terminal, just reward (mask out rest)
+                q_target = r + self.gamma * max_q_succ * term
 
-            loss = funt.smooth_l1_loss(q_sa, q_target)
-            self.optimiser.zero_grad()
-            loss.backward()
-            self.optimiser.step()
+                loss = funt.smooth_l1_loss(q_sa, q_target)
+                self.optimiser.zero_grad()
+                loss.backward()
+                self.optimiser.step()
 
-            # at regular intervals (every update_target episodes) bring target network up to date with optimising network
+            # at regular intervals bring target network up to date with optimising network
             if ep_no % self.update_target == 0 and ep != 0:
                 self.target_network.load_state_dict(self.optimising_network.state_dict())
 
 
 # initialise environment
-env = gym.make('CartPole-v0')
+env = gym.make('CartPole-v1')
 start = time.time()
 
 # seed behaviour of spaces such that they are reproducible
@@ -150,20 +151,20 @@ state_space_size = np.array(env.observation_space.shape).prod()
 action_space_size = env.action_space.n
 
 # network hyperparameters & initialise agent
-alp = 0.005
+alp = 0.0005
 gam = 0.98
-agent = Agent(state_space_size, action_space_size, alp, gam)
+agent = Agent(state_space_size, action_space_size, alpha=alp, gamma=gam)
 
-no_eps = 2000
+no_eps = 10000
 marking = []
 means = []
 printing_rate = 50
-marking_rate = 25
+marking_rate = 20
+total_reward = 0.0
 
 for ep in range(no_eps):
     epsilon = agent.select_epsilon(ep)
     state = env.reset()
-    total_reward = 0.0
     time_step = 0
 
     while True:
@@ -184,17 +185,21 @@ for ep in range(no_eps):
     agent.train_step(ep)
 
     marking.append(total_reward)
-    if ep % marking_rate == 0:
+    if ep % marking_rate == 0 and ep != 0:
         std = np.array(marking).std()
         mean = np.array(marking).mean()
         means.append(mean)
-        print("marking, episode: {}, total reward: {:.1f}, mean score: {:.2f}, std score: {:.2f}"
-              .format(ep, total_reward, mean, std))
+        # print("marking, episode: {}, total reward: {:.1f}, mean score: {:.2f}, std score: {:.2f}"
+        #       .format(ep, total_reward, mean, std))
+        print("n_episode : {}, score : {:.1f}, n_buffer : {}, eps : {:.1f}%".format(
+            ep, total_reward / marking_rate, agent.replay_buffer.size(), epsilon * 100))
         marking = []
+        total_reward = 0.0
 
     # if ep % printing_rate == 0 and ep != 0:
         # print("episode: {}, total reward: {:.1f}, epsilon: {:.2f}".format(ep, total_reward, epsilon))
 
+env.close()
 enlapsed = time.time() - start
 print("Time elapsed: ", enlapsed)
 
@@ -202,6 +207,6 @@ print("Time elapsed: ", enlapsed)
 plt.plot(means, color='green')
 plt.xlabel('Episode')
 plt.ylabel('Reward')
-plt.title('Training progression [target update rate = {}, time = {}]'.format(agent.update_target, enlapsed))
+plt.title('Training progression [time = {:.2f}]'.format(enlapsed))
 plt.savefig('training_progression_{}.png'.format(datetime.datetime.now()))
 plt.show()
