@@ -13,7 +13,7 @@ import datetime
 
 
 class Buffer:
-    def __init__(self, max_buffer_size):
+    def __init__(self):
         self.buffer = collections.deque(maxlen=max_buffer_size)
 
     def add(self, experience):
@@ -68,76 +68,43 @@ class Network(nn.Module):
             return outputs.argmax().item()
 
 
-class Agent:
-    def __init__(self,
-                 states_n,
-                 actions_n,
-                 alpha=0.005,
-                 gamma=0.98,
-                 max_buffer_size=50000,
-                 batch_size=32,
-                 min_epsilon=0.01,
-                 max_epsilon=0.1,
-                 annealing_rate=0.0005,
-                 init_training=1500,
-                 update_target_rate=10):
+def train_step(optimising_net, target_net, memory, optimser, ep_no):
+    s, a, r, succ, term = memory.sample(batch_size)
 
-        # set hyperparameters
-        self.alpha = alpha
-        self.gamma = gamma
-        self.max_buffer_size = max_buffer_size
-        self.batch_size = batch_size
-        self.min_epsilon = min_epsilon
-        self.max_epsilon = max_epsilon
-        self.annealing_rate = annealing_rate
-        self.init_training = init_training
-        self.update_target = update_target_rate
+    qvalues = optimising_net(s)
+    q_sa = qvalues.gather(1, a)
 
-        # create replay buffer and agent's two networks: optimising and target (init target params equal to optimising)
-        self.optimising_network = Network(states_n, actions_n)
-        self.target_network = Network(states_n, actions_n)
-        self.replay_buffer = Buffer(max_buffer_size)
-        self.target_network.load_state_dict(self.optimising_network.state_dict())
-        self.optimiser = optim.Adam(self.optimising_network.parameters(), lr=alpha)
+    # generate q values for all actions from the successor state
+    succ_qvalues = target_net(succ)
+    # generate tensor of the maximal action for the successor state for each element in the batch
+    max_q_succ = succ_qvalues.max(1)[0].unsqueeze(1)
+    # Q-target = reward + discounted maximal value of successor state (over all actions)
+    # if terminal, just reward (mask out rest)
+    q_target = r + gamma * max_q_succ * term
 
-    def select_epsilon(self, ep_no):
-        return max(self.min_epsilon, self.max_epsilon - self.annealing_rate * ep_no)
+    loss = funt.smooth_l1_loss(q_sa, q_target)
+    optimser.zero_grad()
+    loss.backward()
+    optimser.step()
 
-    def policy(self, s, e):
-        return self.optimising_network.step(torch.from_numpy(s).float().unsqueeze(0), e)
-
-    def add_experience(self, experience):
-        self.replay_buffer.add(experience)
-
-    def train_step(self, ep_no):
-        if self.replay_buffer.size() > self.init_training:
-            s, a, r, succ, term = self.replay_buffer.sample(self.batch_size)
-
-            qvalues = self.optimising_network(s)
-            q_sa = qvalues.gather(1, a)
-
-            # generate q values for all actions from the successor state
-            succ_qvalues = self.target_network(succ)
-            # generate tensor of the maximal action for the successor state for each element in the batch
-            max_q_succ = succ_qvalues.max(1)[0].unsqueeze(1)
-            # Q-target = reward + discounted maximal value of successor state (over all actions)
-            # if terminal, just reward (mask out rest)
-            q_target = r + self.gamma * max_q_succ * term
-
-            loss = funt.smooth_l1_loss(q_sa, q_target)
-            self.optimiser.zero_grad()
-            loss.backward()
-            self.optimiser.step()
-
-            # at regular intervals (every update_target episodes) bring target network up to date with optimising network
-            if ep_no % self.update_target == 0 and ep != 0:
-                self.target_network.load_state_dict(self.optimising_network.state_dict())
+    # at regular intervals (every 50 episodes) bring target network up to date with optimising network
+    if ep_no % 10 == 0 and ep != 0:
+        target_net.load_state_dict(optimising_net.state_dict())
 
 
 # initialise environment
 env = gym.make('CartPole-v0')
-env.reset()
 start = time.time()
+
+# network hyperparameters
+alpha = 0.005
+gamma = 0.98
+max_buffer_size = 50000
+batch_size = 32
+min_epsilon = 0.01
+max_epsilon = 0.08
+epsilon_anneal_rate = 0.01/200
+training_init_size = 1500
 
 # seed behaviour of spaces such that they are reproducible
 seed = 742
@@ -147,42 +114,43 @@ np.random.seed(seed)
 env.seed(seed)
 env.action_space.seed(seed)
 
+# generate replay buffer and agent's two networks: optimising and target (init target params equal to optimising ones)
 state_space_size = np.array(env.observation_space.shape).prod()
 action_space_size = env.action_space.n
-
-# network hyperparameters & initialise agent
-alp = 0.005
-gam = 0.98
-agent = Agent(state_space_size, action_space_size, alp, gam)
+optimising_network = Network(state_space_size, action_space_size)
+target_network = Network(state_space_size, action_space_size)
+target_network.load_state_dict(optimising_network.state_dict())
+replay_buffer = Buffer()
 
 no_eps = 2000
 marking = []
 means = []
 printing_rate = 50
 marking_rate = 25
+optimiser = optim.Adam(optimising_network.parameters(), lr=alpha)
 
 for ep in range(no_eps):
-    epsilon = agent.select_epsilon(ep)
+    epsilon = max(min_epsilon, max_epsilon - epsilon_anneal_rate * ep)
     state = env.reset()
     total_reward = 0.0
     time_step = 0
 
     while True:
         time_step += 1
-        action = agent.policy(state, epsilon)
+        action = optimising_network.step(torch.from_numpy(state).float().unsqueeze(0), epsilon)
         successor, reward, terminal, _ = env.step(action)
 
         terminal_mask = 0.0 if terminal else 1.0
         transition = (state, action, reward/100.0, successor, terminal_mask)
-        agent.add_experience(transition)
-
+        replay_buffer.add(transition)
         state = successor
         total_reward += reward
 
         if terminal:
             break
 
-    agent.train_step(ep)
+    if replay_buffer.size() > training_init_size:
+        train_step(optimising_network, target_network, replay_buffer, optimiser, ep)
 
     marking.append(total_reward)
     if ep % marking_rate == 0:
@@ -200,9 +168,9 @@ enlapsed = time.time() - start
 print("Time elapsed: ", enlapsed)
 
 # Plot the mean reward array showing the progression of the agents success
-plt.plot(means, color='green')
+plt.plot(means, color='red')
 plt.xlabel('Episode')
 plt.ylabel('Reward')
-plt.title('Training progression [target update rate = {}, time = {}]'.format(agent.update_target, enlapsed))
+plt.title('Training progression [time = {}]'.format(enlapsed))
 plt.savefig('training_progression_{}.png'.format(datetime.datetime.now()))
 plt.show()
