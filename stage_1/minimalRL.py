@@ -9,6 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+import matplotlib.pyplot as plt
+
 # Hyperparameters
 learning_rate = 0.0005
 gamma = 0.98
@@ -91,6 +93,8 @@ def main():
     score = 0.0
     optimizer = optim.Adam(q.parameters(), lr=learning_rate)
 
+    scores = []
+
     for n_epi in range(10000):
         epsilon = max(0.01, 0.08 - 0.01 * (n_epi / 200))  # Linear annealing from 8% to 1%
         s = env.reset()
@@ -114,6 +118,7 @@ def main():
             q_target.load_state_dict(q.state_dict())
             print("n_episode : {}, score : {:.1f}, n_buffer : {}, eps : {:.1f}%".format(
                 n_epi, score / print_interval, memory.size(), epsilon * 100))
+            scores.append(score/print_interval)
             score = 0.0
     env.close()
 

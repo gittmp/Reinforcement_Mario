@@ -155,7 +155,7 @@ alp = 0.0005
 gam = 0.98
 agent = Agent(state_space_size, action_space_size, alpha=alp, gamma=gam)
 
-no_eps = 10000
+no_eps = 5000
 marking = []
 means = []
 printing_rate = 50

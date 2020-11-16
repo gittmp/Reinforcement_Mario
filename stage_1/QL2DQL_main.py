@@ -3,7 +3,7 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 
-env = gym.make('FrozenLake-v0', is_slippery=False)
+env = gym.make('FrozenLake-v0')
 # env = gym.make('Taxi-v3')
 state_space = env.observation_space.n
 agent = defs.Agent(state_space,
@@ -13,6 +13,7 @@ agent = defs.Agent(state_space,
                    batch_size=32,
                    epsilon_anneal_rate=(1/5000),
                    ermb_init_size=5000)
+
 
 num_eps = 5000
 max_ep_length = 99
