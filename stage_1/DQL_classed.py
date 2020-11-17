@@ -45,6 +45,7 @@ class Buffer:
 
 class Network(nn.Module):
     def __init__(self, input_size, output_size):
+        self.output_size = output_size
         super(Network, self).__init__()
         self.l1 = nn.Linear(input_size, 256)
         self.l2 = nn.Linear(256, 84)
@@ -62,8 +63,8 @@ class Network(nn.Module):
         outputs = self.forward(inputs)
 
         expl_probability = random.random()
-        if expl_probability < eps:
-            return random.randint(0, 1)
+        if expl_probability <= eps:
+            return random.randint(0, self.output_size - 1)
         else:
             return outputs.argmax().item()
 
@@ -77,9 +78,9 @@ class Agent:
                  max_buffer_size=50000,
                  batch_size=32,
                  min_epsilon=0.01,
-                 max_epsilon=0.1,
+                 max_epsilon=0.11,
                  annealing_rate=0.0005,
-                 init_training=2000,
+                 init_training=1000,
                  update_target_rate=20):
 
         # set hyperparameters
@@ -136,8 +137,17 @@ class Agent:
 
 
 # initialise environment
-env = gym.make('CartPole-v1')
+# env = gym.make('CartPole-v1')
+env = gym.make('Pong-v0')
+# env = gym.make('FrozenLake-v0', is_slippery=False)
+
+print("State space shape: ", env.observation_space.shape)
+# print("State space high: ", env.observation_space.high)
+# print("State space low: ", env.observation_space.low)
+print("Action space: ", env.action_space)
 start = time.time()
+
+breakpoint()
 
 # seed behaviour of spaces such that they are reproducible
 seed = 742
@@ -155,7 +165,7 @@ alp = 0.0005
 gam = 0.98
 agent = Agent(state_space_size, action_space_size, alpha=alp, gamma=gam)
 
-no_eps = 5000
+no_eps = 1000
 marking = []
 means = []
 printing_rate = 50
@@ -165,10 +175,8 @@ total_reward = 0.0
 for ep in range(no_eps):
     epsilon = agent.select_epsilon(ep)
     state = env.reset()
-    time_step = 0
 
     while True:
-        time_step += 1
         action = agent.policy(state, epsilon)
         successor, reward, terminal, _ = env.step(action)
 
