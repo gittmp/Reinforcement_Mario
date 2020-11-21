@@ -148,9 +148,72 @@ def get_screen():
     return resize(screen).unsqueeze(0).to(device)
 
 
-
 env.reset()
 plt.figure()
 plt.imshow(get_screen().cpu().squeeze(0).permute(1, 2, 0).numpy(), interpolation='none')
 plt.title('Example extracted screen')
 plt.show()
+
+batch_size = 128
+gamma = 0.999
+epsilon_ceil = 0.9
+epsilon_floor = 0.05
+epsilon_decay = 200
+update_target = 20
+
+# get screen size/shape to initialised input layer size of NN
+init_screen = get_screen()
+_, _, height, width = init_screen.shape
+
+# get action space size
+n_actions = env.action_space.n
+
+# initialise policy network and target network
+policy_network = DQN(height, width, n_actions).to(device)
+target_network = DQN(height, width, n_actions).to(device)
+target_network.load_state_dict(policy_network.state_dict())
+target_network.eval()
+
+# initialise optimiser and replay memory
+optimiser = optim.RMSprop(policy_network.parameters())
+memory = ReplayMemory(10000)
+
+time_step = 0
+
+
+# step function picking action from current state
+def select_action(state):
+    global time_step
+    epsilon = epsilon_floor + (epsilon_ceil - epsilon_floor) * math.exp(-1.0 * time_step / epsilon_decay)
+    time_step += 1
+    if random.random() > epsilon:
+        with torch.no_grad():
+            # t.max(1) = return max column value of each row
+            # [1] = return index of that max
+            # i.e. return action with the largest value
+            return policy_network(state).max(1)[1].view(1, 1)
+    else:
+        return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
+
+
+episode_durations = []
+
+
+# plot function which plots durations the figure during training.
+def plot_durations():
+    plt.figure(2)
+    plt.clf()
+    durations_t = torch.tensor(episode_durations, dtype=torch.float)
+    plt.title('Training')
+    plt.xlabel('Episode')
+    plt.ylabel('Duration')
+    plt.plot(durations_t.numpy())
+
+    # plot 100 means of episodes
+    if len(durations_t >= 100):
+        means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(99), means))
+        plt.plot(means.numpy())
+
+    # update plots
+    plt.pause(0.001)
