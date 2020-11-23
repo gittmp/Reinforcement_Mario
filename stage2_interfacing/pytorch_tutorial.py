@@ -23,7 +23,7 @@ import torchvision.transforms as trans  # utility for computer vision
 
 # make environment
 env = gym.make('CartPole-v0').unwrapped
-# plt.ion()
+plt.ion()
 
 # use GPU if possible, else CPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -90,7 +90,7 @@ class DQN(nn.Module):
         x = funct.relu(self.bn2(self.conv2(x)))
         x = funct.relu(self.bn3(self.conv3(x)))
         # return output as tensor([[q_0,left, q_0,right] ... ]) for batch
-        out = self.head(x.view(x.size(), -1))
+        out = self.head(x.view(x.size(0), -1))
         return out
 
 
@@ -210,10 +210,92 @@ def plot_durations():
     plt.plot(durations_t.numpy())
 
     # plot 100 means of episodes
-    if len(durations_t >= 100):
+    if len(durations_t) >= 100:
         means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy())
 
     # update plots
     plt.pause(0.001)
+
+
+# training model over one step using a batch
+def optimise_model():
+    if len(memory) < batch_size:
+        return
+
+    # sample transitions and convert batch-array of Transitions to a Transition of batch-arrays
+    transitions = memory.sample(batch_size)
+    batch = Transition(*zip(*transitions))
+
+    # mask states s.t. terminal states don't have a successor to eval
+    non_term_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=device, dtype=torch.bool)
+
+    # concatenate batch elements into tensors of successors, states, actions and rewards
+    non_term_successors = torch.cat([s for s in batch.next_state if s is not None])
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+    reward_batch = torch.cat(batch.reward)
+
+    # compute Q(s,a) via policy (optimising) network
+    # evaluate all successor states for use in TD-target (via target net)
+    action_vals = policy_network(state_batch).gather(1, action_batch)
+    successor_vals = torch.zeros(batch_size, device=device)
+    successor_vals[non_term_mask] = target_network(non_term_successors).max(1)[0].detach()
+    td_targets = (successor_vals * gamma) + reward_batch
+
+    # compute huber loss between values and targets
+    loss = funct.smooth_l1_loss(action_vals, td_targets.unsqueeze(1))
+
+    # conduct backpropagation
+    optimiser.zero_grad()
+    loss.backward()
+    for param in policy_network.parameters():
+        param.grad.data.clamp_(-1, 1)
+    optimiser.step()
+
+
+# main loop of agents interactions and experience replay training
+num_eps = 300
+for ep in range(num_eps):
+    # represent state as the difference between the last two frames of gameplay
+    print("Episode: ", ep)
+    env.reset()
+    last_screen = get_screen()
+    current_screen = get_screen()
+    state = current_screen - last_screen
+
+    # tick through time-steps
+    for t in count():
+        action = select_action(state)
+        _, reward, terminal, _ = env.step(action.item())
+        reward = torch.tensor([reward], device=device)
+
+        last_screen = current_screen
+        current_screen = get_screen()
+
+        if not terminal:
+            successor = current_screen - last_screen
+        else:
+            successor = None
+
+        # push to replay buffer
+        memory.push(state, action, successor, reward)
+
+        state = successor
+
+        # optimise policy network at every step
+        optimise_model()
+        if terminal:
+            episode_durations.append(t + 1)
+            plot_durations()
+            break
+
+    if ep % update_target == 0:
+        target_network.load_state_dict(policy_network.state_dict())
+
+print('Complete')
+env.render()
+env.close()
+plt.ioff()
+plt.show()
