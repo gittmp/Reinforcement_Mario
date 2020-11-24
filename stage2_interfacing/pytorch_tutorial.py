@@ -20,18 +20,10 @@ from itertools import count
 from PIL import Image
 import torchvision.transforms as trans  # utility for computer vision
 
-import retro
-
 
 # make environment
-# env = gym.make('CartPole-v0').unwrapped
-env = retro.make('SuperMarioBros-Nes').unwrapped
+env = gym.make('CartPole-v0').unwrapped
 plt.ion()
-
-print("State space: ", env.observation_space)
-# print("State space high: ", env.observation_space.high)
-# print("State space low: ", env.observation_space.low)
-print("Action space: ", env.action_space)
 
 # use GPU if possible, else CPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -127,7 +119,6 @@ def get_cart_location(screen_width):
 def get_screen():
     # transform screen returned from gym into torch order (CHW)
     screen = env.render(mode='rgb_array').transpose((2, 0, 1))
-    """
     # strip redundant vertical top 20% and bottom 40% of image (as cart not there)
     _, screen_height, screen_width = screen.shape
     screen = screen[:, int(screen_height*0.4):int(screen_height * 0.8)]
@@ -149,7 +140,6 @@ def get_screen():
 
     # strip screen in horizontal plane s.t. only the slice_range is left
     screen = screen[:, :, slice_range]
-    """
     # convert screen array to float and rescale as a continuous array.
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
     # convert this into a torch tensor
@@ -160,9 +150,9 @@ def get_screen():
 
 env.reset()
 plt.figure()
-# plt.imshow(get_screen().cpu().squeeze(0).permute(1, 2, 0).numpy(), interpolation='none')
-# plt.title('Example extracted screen')
-# plt.show()
+plt.imshow(get_screen().cpu().squeeze(0).permute(1, 2, 0).numpy(), interpolation='none')
+plt.title('Example extracted screen')
+plt.show()
 
 batch_size = 128
 gamma = 0.999
@@ -215,10 +205,8 @@ def plot_durations():
     plt.clf()
     durations_t = torch.tensor(episode_durations, dtype=torch.float)
     plt.title('Training')
-    # plt.xlabel('Episode')
-    plt.xlabel('Timestep')
-    # plt.ylabel('Duration')
-    plt.ylabel('Reward')
+    plt.xlabel('Episode')
+    plt.ylabel('Duration')
     plt.plot(durations_t.numpy())
 
     # plot 100 means of episodes
@@ -279,10 +267,8 @@ for ep in range(num_eps):
 
     # tick through time-steps
     for t in count():
-        print("Time-step =", t)
         action = select_action(state)
-        # _, reward, terminal, _ = env.step(action.item())
-        _, reward, terminal, _ = env.step(env.action_space.sample())
+        _, reward, terminal, _ = env.step(action.item())
         reward = torch.tensor([reward], device=device)
 
         last_screen = current_screen
@@ -295,17 +281,14 @@ for ep in range(num_eps):
 
         # push to replay buffer
         memory.push(state, action, successor, reward)
-        state = successor
 
-        # episode_durations.append(reward)
-        # plot_durations()
-        env.render()
+        state = successor
 
         # optimise policy network at every step
         optimise_model()
         if terminal:
-            # episode_durations.append(t + 1)
-            # plot_durations()
+            episode_durations.append(t + 1)
+            plot_durations()
             break
 
     if ep % update_target == 0:

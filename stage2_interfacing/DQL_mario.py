@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import collections
 import time
 import datetime
+import retro
 
 
 class Buffer:
@@ -106,7 +107,8 @@ class Agent:
         return max(self.min_epsilon, self.max_epsilon - self.annealing_rate * ep_no)
 
     def policy(self, s, e):
-        return self.optimising_network.step(torch.from_numpy(s).float().unsqueeze(0), e)
+        act = self.optimising_network.step(torch.from_numpy(s).float().unsqueeze(0), e)
+        return act
 
     def add_experience(self, experience):
         self.replay_buffer.add(experience)
@@ -138,13 +140,14 @@ class Agent:
 
 
 # initialise environment
-env = gym.make('CartPole-v1')
+# env = gym.make('CartPole-v1')
+env = retro.make(game='SuperMarioBros-Nes')
 # env = gym.make('FrozenLake-v0', is_slippery=False)
 
-# print("State space shape: ", env.observation_space.shape)
+print("State space shape: ", env.observation_space.shape)
 # print("State space high: ", env.observation_space.high)
 # print("State space low: ", env.observation_space.low)
-# print("Action space: ", env.action_space)
+print("Action space: ", env.action_space)
 start = time.time()
 
 # seed behaviour of spaces such that they are reproducible
@@ -161,7 +164,7 @@ action_space_size = env.action_space.n
 # network hyperparameters & initialise agent
 alp = 0.0005
 gam = 0.98
-agent = Agent(state_space_size, action_space_size, alpha=alp, gamma=gam)
+agent = Agent(state_space_size, action_space_size, alpha=alp, gamma=gam, max_epsilon=1, annealing_rate=0)
 
 no_eps = 1000
 marking = []
@@ -173,10 +176,13 @@ total_reward = 0.0
 for ep in range(no_eps):
     epsilon = agent.select_epsilon(ep)
     state = env.reset()
+    # time_step = 0
 
     while True:
+        # time_step += 1
         action = agent.policy(state, epsilon)
         successor, reward, terminal, _ = env.step(action)
+        # successor, reward, terminal, _ = env.step(env.action_space.sample())
 
         terminal_mask = 0.0 if terminal else 1.0
         transition = (state, action, reward/100.0, successor, terminal_mask)
