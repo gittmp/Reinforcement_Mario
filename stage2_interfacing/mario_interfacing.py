@@ -288,8 +288,8 @@ for ep in range(num_eps):
         # print("Actual state: ", state)
         # print("Random state: ", env.observation_space.sample())
 
-        # print("NN action: ", action)
-        # print("Random action: ", env.action_space.sample())
+        print("NN action: ", action)
+        print("Random action: ", env.action_space.sample())
 
         last_screen = current_screen
         current_screen = get_screen()
