@@ -116,7 +116,7 @@ resize = trans.Compose([
 # find location of agent within the frame
 def get_cart_location(screen_width):
     # width of whole environment is length of +ve x-axis doubled (to incl. -ve)
-    world_width = env.x_threshold * 2
+    world_width = env.x_threshold * 2  # ERROR this line wont work as no x_threshold attribute
     # scaling factor is ratio between screen width and world width
     scale = screen_width / world_width
     # find the point of the middle of the cart
@@ -285,6 +285,12 @@ for ep in range(num_eps):
         _, reward, terminal, _ = env.step(env.action_space.sample())
         reward = torch.tensor([reward], device=device)
 
+        # print("Actual state: ", state)
+        # print("Random state: ", env.observation_space.sample())
+
+        # print("NN action: ", action)
+        # print("Random action: ", env.action_space.sample())
+
         last_screen = current_screen
         current_screen = get_screen()
 
@@ -297,8 +303,8 @@ for ep in range(num_eps):
         memory.push(state, action, successor, reward)
         state = successor
 
-        episode_durations.append(reward)
-        plot_durations()
+        # episode_durations.append(reward)
+        # plot_durations()
         env.render()
 
         # optimise policy network at every step
