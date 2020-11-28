@@ -203,6 +203,7 @@ def select_action(state):
             # i.e. return action with the largest value
             return policy_network(state).max(1)[1].view(1, 1)
     else:
+        # return torch.tensor
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
 
 
@@ -265,6 +266,13 @@ def optimise_model():
     for param in policy_network.parameters():
         param.grad.data.clamp_(-1, 1)
     optimiser.step()
+
+
+print("Action space: ", env.action_space)
+print("State space: ", env.observation_space)
+
+print("Action space shape: ", env.action_space.shape)
+print("State space shape: ", env.observation_space.shape)
 
 
 # main loop of agents interactions and experience replay training
