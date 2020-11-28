@@ -2,6 +2,7 @@
 # takes input of section of screen frames to produce q-values
 # state represented as difference between current frame and last one
 # this allows agent to deduce the velocity
+# source: https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 
 # imports
 import gym

@@ -45,17 +45,16 @@ def run(training_mode, pretrained):
     action_space = env.action_space.n
 
     # create agent which acts in the environment
-    agent = dqn.DQNAgent(state_space=observation_space,
-                     action_space=action_space,
-                     max_memory_size=30000,
-                     batch_size=32,
-                     gamma=0.90,
-                     lr=0.00025,
-                     dropout=0.,
-                     exploration_max=1.0,
-                     exploration_min=0.02,
-                     exploration_decay=0.99,
-                     pretrained=pretrained)
+    agent = dqn.Agent(state_space=observation_space,
+                      action_space=action_space,
+                      max_memory_size=30000,
+                      batch_size=32,
+                      gamma=0.90,
+                      lr=0.00025,
+                      exploration_max=1.0,
+                      exploration_min=0.02,
+                      exploration_decay=0.99,
+                      pretrained=pretrained)
 
     # run through episodes
     num_episodes = 10000
@@ -100,6 +99,8 @@ def run(training_mode, pretrained):
 
             # break if end of the episode
             if terminal:
+                print("Info:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
+                      .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
                 break
 
         # evaluation metrics
