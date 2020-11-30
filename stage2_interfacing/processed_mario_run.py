@@ -10,35 +10,10 @@ import processed_mario_dqn as dqn
 import processed_mario_wrappers as wrappers
 
 
-def show_state(env, ep=0, info=""):
-    plt.figure(3)
-    plt.clf()
-    plt.imshow(env.render(mode='rgb_array'))
-    plt.title("Episode: %d %s" % (ep, info))
-    plt.axis('off')
-
-    # idk what this is meant to be about but there's no "display" anywhere else in here lol
-    # display.clear_output(wait=True)
-    # display.display(plt.gcf())
-
-
 def run(training_mode, pretrained):
     # create environment and wrap so that frames are downscaled and grayscale
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0')
-
-    print("BEFORE PREPROCESSING")
-    print("States: ", env.observation_space)
-    print("Actions: ", env.action_space)
-    print("State size: ", env.observation_space.shape)
-    print("Action size: ", env.action_space.n)
-
     env = wrappers.make_env(env)
-
-    print("\nAFTER PREPROCESSING")
-    print("States: ", env.observation_space)
-    print("Actions: ", env.action_space)
-    print("State size: ", env.observation_space.shape)
-    print("Action size: ", env.action_space.n)
 
     # get size of state and action spaces
     observation_space = env.observation_space.shape
@@ -73,9 +48,6 @@ def run(training_mode, pretrained):
         while True:
             steps += 1
             env.render()
-
-            if not training_mode:
-                show_state(env, ep)
 
             # generate action from the agent's policy network
             action = agent.act(state)
