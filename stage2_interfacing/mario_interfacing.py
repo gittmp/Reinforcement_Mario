@@ -116,7 +116,7 @@ resize = trans.Compose([
 # find location of agent within the frame
 def get_cart_location(screen_width):
     # width of whole environment is length of +ve x-axis doubled (to incl. -ve)
-    world_width = env.x_threshold * 2
+    world_width = env.x_threshold * 2  # ERROR this line wont work as no x_threshold attribute
     # scaling factor is ratio between screen width and world width
     scale = screen_width / world_width
     # find the point of the middle of the cart
@@ -203,6 +203,7 @@ def select_action(state):
             # i.e. return action with the largest value
             return policy_network(state).max(1)[1].view(1, 1)
     else:
+        # return torch.tensor
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
 
 
@@ -267,6 +268,13 @@ def optimise_model():
     optimiser.step()
 
 
+print("Action space: ", env.action_space)
+print("State space: ", env.observation_space)
+
+print("Action space shape: ", env.action_space.shape)
+print("State space shape: ", env.observation_space.shape)
+
+
 # main loop of agents interactions and experience replay training
 num_eps = 300
 for ep in range(num_eps):
@@ -285,6 +293,12 @@ for ep in range(num_eps):
         _, reward, terminal, _ = env.step(env.action_space.sample())
         reward = torch.tensor([reward], device=device)
 
+        # print("Actual state: ", state)
+        # print("Random state: ", env.observation_space.sample())
+
+        print("NN action: ", action)
+        print("Random action: ", env.action_space.sample())
+
         last_screen = current_screen
         current_screen = get_screen()
 
@@ -297,8 +311,8 @@ for ep in range(num_eps):
         memory.push(state, action, successor, reward)
         state = successor
 
-        episode_durations.append(reward)
-        plot_durations()
+        # episode_durations.append(reward)
+        # plot_durations()
         env.render()
 
         # optimise policy network at every step

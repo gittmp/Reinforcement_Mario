@@ -140,14 +140,7 @@ class Agent:
 
 
 # initialise environment
-# env = gym.make('CartPole-v1')
 env = retro.make(game='SuperMarioBros-Nes')
-# env = gym.make('FrozenLake-v0', is_slippery=False)
-
-print("State space shape: ", env.observation_space.shape)
-# print("State space high: ", env.observation_space.high)
-# print("State space low: ", env.observation_space.low)
-print("Action space: ", env.action_space)
 start = time.time()
 
 # seed behaviour of spaces such that they are reproducible
