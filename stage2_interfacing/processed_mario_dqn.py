@@ -162,9 +162,3 @@ class Agent:
 
         # Makes sure that exploration rate is always at least 'exploration min'
         self.exploration_rate = max(self.exploration_rate, self.exploration_min)
-
-
-def vectorize_action(action, action_space):
-    # Given a scalar action, return a one-hot encoded action
-
-    return [0 for _ in range(action)] + [1] + [0 for _ in range(action + 1, action_space)]

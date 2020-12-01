@@ -129,6 +129,5 @@ def make_env(env):
     env = ProcessFrame84(env)
     env = ImageToPyTorch(env)
     env = BufferWrapper(env)
-
-    # constrain actions to only permit a movement to the right - i.e. no turning back for this agent sadly :'(
+    
     return JoypadSpace(env, COMPLEX_MOVEMENT)

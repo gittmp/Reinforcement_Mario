@@ -78,7 +78,6 @@ def run(training_mode, pretrained):
         # evaluation metrics
         total_rewards.append(total_reward)
         print("\nTotal reward after episode {} is {}".format(ep + 1, total_rewards[-1]))
-        num_episodes += 1
 
     # if training: deposit learned model into files
     if training_mode:
