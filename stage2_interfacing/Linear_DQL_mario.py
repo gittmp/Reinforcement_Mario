@@ -175,7 +175,6 @@ for ep in range(no_eps):
         # time_step += 1
         action = agent.policy(state, epsilon)
         successor, reward, terminal, _ = env.step(action)
-        # successor, reward, terminal, _ = env.step(env.action_space.sample())
 
         terminal_mask = 0.0 if terminal else 1.0
         transition = (state, action, reward/100.0, successor, terminal_mask)

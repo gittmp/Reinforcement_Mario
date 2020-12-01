@@ -1,7 +1,7 @@
 import numpy as np
 
 from nes_py.wrappers import JoypadSpace  # converting actions to correct JoyPad representation
-from gym_super_mario_bros.actions import RIGHT_ONLY  # only permits moving to the right
+from gym_super_mario_bros.actions import COMPLEX_MOVEMENT  # only permits moving to the right
 import collections  # for deque: insert(e_new) -> [e_new, e_0, ..., e_l-2] -> exit(e_l-1)
 import gym
 import cv2  # util for image manipulation
@@ -130,5 +130,5 @@ def make_env(env):
     env = ImageToPyTorch(env)
     env = BufferWrapper(env)
 
-    # constrain actions to only permit a movement to the right - i.e. no turning back for this agent sadly :'(
-    return JoypadSpace(env, RIGHT_ONLY)
+    # constrain actions to only valid combinations
+    return JoypadSpace(env, COMPLEX_MOVEMENT)
