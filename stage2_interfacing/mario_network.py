@@ -51,6 +51,7 @@ class Memory:
             with open("buffer.pkl", "rb") as f:
                 self.buffer = pickle.load(f)
             self.buffer_capacity = self.buffer.maxlen
+            print("Buffer remembered")
         else:
             self.buffer = collections.deque(maxlen=buffer_capacity)
             self.buffer_capacity = buffer_capacity
@@ -109,6 +110,7 @@ class Agent:
         if self.pretrained:
             self.policy_network.load_state_dict(torch.load("policy_network.pt", map_location=torch.device(self.device)))
             self.policy_network.load_state_dict(torch.load("target_network.pt", map_location=torch.device(self.device)))
+            print("Networks remembered")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
