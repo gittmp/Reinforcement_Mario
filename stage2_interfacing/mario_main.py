@@ -1,7 +1,8 @@
 import torch
+import torchvision
 import gym_super_mario_bros as gym_smb
 from tqdm import tqdm
-# import numpy as np
+import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 
@@ -28,6 +29,16 @@ def plot_durations(ep_rewards):
         plt.plot(means.numpy())
 
     # update plots
+    plt.pause(0.001)
+
+
+# plot function to visualise downsampled slice of screen
+def render_state(four_frames):
+    single_image = four_frames.squeeze(0)[-1]
+    fig = plt.figure("Frame")
+    plt.imshow(single_image, cmap='gray')
+    plt.title("Down-sampled 84x84 grayscale image")
+    plt.draw()
     plt.pause(0.001)
 
 
@@ -83,7 +94,10 @@ for ep in tqdm(range(no_eps)):
 
     while True:
         timestep += 1
-        # env.render()
+        env.render()
+
+        if timestep % 25 == 0:
+            render_state(state)
 
         action = agent.step(state)
 
