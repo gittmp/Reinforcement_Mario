@@ -122,7 +122,10 @@ class Agent:
         if random.random() < self.epsilon:
             return torch.tensor([[random.randrange(self.action_n)]])
         else:
-            return torch.argmax(self.policy_network(state.to(self.device))).unsqueeze(0).unsqueeze(0).cpu()
+            nn_out = self.policy_network(state.to(self.device))
+            # print("Neural network output = ", nn_out)
+            return torch.argmax(nn_out).unsqueeze(0).unsqueeze(0).cpu()
+            # return nn_out.squeeze(0).cpu()
 
     def target_update(self):
         self.target_network.load_state_dict(self.policy_network.state_dict())

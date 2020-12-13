@@ -118,10 +118,17 @@ class Agent:
         self.step += 1
 
         if random.random() < self.exploration_rate:
+            print("Random action taken")
             return torch.tensor([[random.randrange(self.action_space)]])
 
         # Local net is used for the policy
-        return torch.argmax(self.local_net(state.to(self.device))).unsqueeze(0).unsqueeze(0).cpu()
+
+        nn_out = self.local_net(state.to(self.device))
+        nn_out = torch.argmax(nn_out).unsqueeze(0).unsqueeze(0).cpu()
+
+        print("Neural net output = ", nn_out)
+
+        return nn_out
 
     def copy_model(self):
         # Copy local net weights into target net

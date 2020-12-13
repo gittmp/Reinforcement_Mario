@@ -13,7 +13,18 @@ import processed_mario_wrappers as wrappers
 def run(training_mode, pretrained):
     # create environment and wrap so that frames are downscaled and grayscale
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0')
+
+    print("PRE-WRAPPING")
+    print("obs space: ", env.observation_space)
+    print("action space:", env.action_space)
+    print("sample action: ", env.action_space.sample())
+
     env = wrappers.make_env(env)
+
+    print("\nPOST-WRAPPING")
+    print("obs space: ", env.observation_space)
+    print("action space:", env.action_space)
+    print("sample action: ", env.action_space.sample())
 
     # get size of state and action spaces
     observation_space = env.observation_space.shape
@@ -51,6 +62,8 @@ def run(training_mode, pretrained):
 
             # generate action from the agent's policy network
             action = agent.act(state)
+
+            print("Chosen action = ", action)
 
             # get observations from environment based upon the action
             state_next, reward, terminal, info = env.step(int(action[0]))

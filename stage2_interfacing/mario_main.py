@@ -1,12 +1,14 @@
 import torch
 import gym_super_mario_bros as gym_smb
 from tqdm import tqdm
-import numpy as np
+# import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 
-import processed_mario_wrappers as wrappers
+import mario_wrapper as wrapper
 import mario_network as network
+
+# import retro
 
 
 # plot function which plots durations the figure during training.
@@ -31,7 +33,22 @@ def plot_durations(ep_rewards):
 
 game = 'SuperMarioBros-1-1-v0'
 env = gym_smb.make(game)
-env = wrappers.make_env(env)
+
+# game = "SuperMarioBros-Nes"
+# env = retro.make(game).unwrapped
+
+print("PRE-WRAPPING")
+print("obs space: ", env.observation_space)
+print("action space:", env.action_space)
+print("sample action: ", env.action_space.sample())
+
+env = wrapper.make_env(env)
+
+print("\nPOST-WRAPPING")
+print("obs space: ", env.observation_space)
+print("action space:", env.action_space)
+print("sample action: ", env.action_space.sample())
+
 pretrained = False
 
 agent = network.Agent(
@@ -69,6 +86,11 @@ for ep in tqdm(range(no_eps)):
         # env.render()
 
         action = agent.step(state)
+
+        # sample_action = torch.Tensor(env.action_space.sample())
+        # print("Chosen action = ", action)
+        # print("Sampled action = ", sample_action)
+
         successor, reward, terminal, info = env.step(int(action[0]))
         total_reward += reward
 
