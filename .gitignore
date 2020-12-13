@@ -1,1 +1,5 @@
 stage1_DQL/DQL_classed_vids/**
+stage2_interfacing/buffer.pkl
+stage2_interfacing/episode_rewards.pkl
+stage2_interfacing/policy_network.pt
+stage2_interfacing/target_network.pt

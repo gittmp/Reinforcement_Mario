@@ -1,0 +1,26 @@
+Main:
+alpha=0.00025,
+gamma=0.9,
+epsilon_ceil=1.0,
+epsilon_floor=0.02,
+epsilon_decay=0.99,
+buffer_capacity=30000,
+batch_size=32,
+update_target=5000,
+pretrained=False,
+no_eps=100
+
+Network:
+activation_function=ReLU,
+no_conv_layers=3,
+conv_output_widths={32,64,64},
+kernel_sizes={8,4,3},
+strides={4,2,1},
+no_fc_linear_layers=2,
+fc_output_widths={512}
+
+Wrappers:
+no_skip_frames=4,
+frame_buffer_len=2,
+downsampled_frame_size=(84, 84),
+movement_type=COMPLEX_MOVEMENT

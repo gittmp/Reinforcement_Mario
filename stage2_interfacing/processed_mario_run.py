@@ -85,7 +85,7 @@ def run(training_mode, pretrained):
             pickle.dump(agent.ending_position, f)
         with open("num_in_queue.pkl", "wb") as f:
             pickle.dump(agent.num_in_queue, f)
-        with open("total_rewards.pkl", "wb") as f:
+        with open("episode_rewards.pkl", "wb") as f:
             pickle.dump(total_rewards, f)
 
         torch.save(agent.local_net.state_dict(), "dq1.pt")

@@ -9,9 +9,30 @@ import processed_mario_wrappers as wrappers
 import mario_network as network
 
 
+# plot function which plots durations the figure during training.
+def plot_durations(ep_rewards):
+    plt.figure(2)
+    plt.clf()
+    rewards = torch.tensor(ep_rewards, dtype=torch.float)
+    plt.title('Training')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.plot(rewards.numpy())
+
+    # plot 100 means of episodes
+    if len(rewards) >= 100:
+        means = rewards.unfold(0, 100, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(99), means))
+        plt.plot(means.numpy())
+
+    # update plots
+    plt.pause(0.001)
+
+
 game = 'SuperMarioBros-1-1-v0'
 env = gym_smb.make(game)
 env = wrappers.make_env(env)
+pretrained = False
 
 agent = network.Agent(
     state_shape=env.observation_space.shape,
@@ -24,13 +45,18 @@ agent = network.Agent(
     buffer_capacity=30000,
     batch_size=32,
     update_target=5000,
-    pretrained=False
+    pretrained=pretrained
 )
+
+if pretrained:
+    with open("episode_rewards.pkl", "rb") as f:
+        episode_rewards = pickle.load(f)
+else:
+    episode_rewards = []
 
 training = True
 no_eps = 100
 env.reset()
-total_rewards = []
 
 for ep in tqdm(range(no_eps)):
     state = env.reset()
@@ -40,7 +66,7 @@ for ep in tqdm(range(no_eps)):
 
     while True:
         timestep += 1
-        env.render()
+        # env.render()
 
         action = agent.step(state)
         successor, reward, terminal, info = env.step(int(action[0]))
@@ -62,12 +88,13 @@ for ep in tqdm(range(no_eps)):
                   .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
             break
 
-    total_rewards.append(total_reward)
-    print("\nTotal reward after episode {} is {}".format(ep + 1, total_rewards[-1]))
+    episode_rewards.append(total_reward)
+    print("\nTotal reward after episode {} is {}".format(ep + 1, episode_rewards[-1]))
+    plot_durations(episode_rewards)
 
 if training:
-    with open("total_rewards.pkl", "wb") as f:
-        pickle.dump(total_rewards, f)
+    with open("episode_rewards.pkl", "wb") as f:
+        pickle.dump(episode_rewards, f)
 
     torch.save(agent.policy_network.state_dict(), "policy_network.pt")
     torch.save(agent.target_network.state_dict(), "target_network.pt")
@@ -76,7 +103,3 @@ if training:
         pickle.dump(agent.memory.buffer, f)
 
 env.close()
-
-plt.title("Episodes trained vs. Average Rewards (per 500 eps)")
-plt.plot([0 for _ in range(500)] + np.convolve(total_rewards, np.ones((500,))/500, mode="valid").tolist())
-plt.show()
