@@ -32,7 +32,7 @@ def plot_durations(ep_rewards):
 game = 'SuperMarioBros-1-1-v0'
 env = gym_smb.make(game)
 env = wrappers.make_env(env)
-pretrained = True
+pretrained = False
 
 agent = network.Agent(
     state_shape=env.observation_space.shape,
