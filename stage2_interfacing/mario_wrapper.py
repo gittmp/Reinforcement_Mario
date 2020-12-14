@@ -1,5 +1,4 @@
 import numpy as np
-
 from nes_py.wrappers import JoypadSpace  # converting actions to correct JoyPad representation
 from gym_super_mario_bros.actions import COMPLEX_MOVEMENT  # only permits moving to the right
 import collections  # for deque: insert(e_new) -> [e_new, e_0, ..., e_l-2] -> exit(e_l-1)
@@ -64,7 +63,6 @@ class ProcessFrame84(gym.ObservationWrapper):
     def process(frame):
         # form numpy array of gameplay frame in original shape of 240x256 pixel values of 3 colour channels (RGB)
         img = np.reshape(frame, [240, 256, 3]).astype(np.float32)
-        # img = np.reshape(frame, [224, 240, 3]).astype(np.float32)
 
         # convert to 1 channel greyscale image by taking 29.9% of R channel + 58.7% G + 11.4% B
         img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
@@ -97,7 +95,7 @@ class ImageToPyTorch(gym.ObservationWrapper):
         return np.moveaxis(observation, 2, 0)
 
 
-# Wrapper
+# observation buffer wrapper
 class BufferWrapper(gym.ObservationWrapper):
     # redefine obs space box to represent the fact its holding 4 frames (4 identical low vals, 4 identical high vals)
     def __init__(self, env, n_steps=4, dtype=np.float32):
@@ -132,4 +130,3 @@ def make_env(env):
     env = BufferWrapper(env)
     
     return JoypadSpace(env, COMPLEX_MOVEMENT)
-    # return env

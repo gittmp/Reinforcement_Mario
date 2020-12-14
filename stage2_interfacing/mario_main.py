@@ -96,7 +96,7 @@ for ep in tqdm(range(no_eps)):
         timestep += 1
         env.render()
 
-        if timestep % 25 == 0:
+        if timestep % 10 == 0:
             render_state(state)
 
         action = agent.step(state)

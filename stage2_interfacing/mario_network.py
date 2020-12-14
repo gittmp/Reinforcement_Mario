@@ -110,7 +110,6 @@ class Agent:
         if self.pretrained:
             self.policy_network.load_state_dict(torch.load("policy_network.pt", map_location=torch.device(self.device)))
             self.policy_network.load_state_dict(torch.load("target_network.pt", map_location=torch.device(self.device)))
-            print("Networks remembered")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
@@ -150,7 +149,3 @@ class Agent:
 
         if self.timestep % self.update_target == 0:
             self.target_update()
-
-
-# experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
-# agent.memory.push(experience)
