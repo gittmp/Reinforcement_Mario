@@ -1,6 +1,6 @@
 import numpy as np
 from nes_py.wrappers import JoypadSpace  # converting actions to correct JoyPad representation
-from gym_super_mario_bros.actions import COMPLEX_MOVEMENT  # only permits moving to the right
+from gym_super_mario_bros.actions import RIGHT_ONLY  # only permits moving to the right
 import collections  # for deque: insert(e_new) -> [e_new, e_0, ..., e_l-2] -> exit(e_l-1)
 import gym
 import cv2  # util for image manipulation
@@ -47,20 +47,20 @@ class MaxAndSkipEnv(gym.Wrapper):
 
 
 # Wrapper (for observation space) to down-sample frame to numpy array of 84x84 greyscale pixels
-class ProcessFrame84(gym.ObservationWrapper):
+class ProcessFrame(gym.ObservationWrapper):
     # represent the observation space as a box of 84x84 pixel values with only 1 colour channel (greyscale)
-    def __init__(self, env=None):
-        super(ProcessFrame84, self).__init__(env)
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8)
+    def __init__(self, env=None, new_shape=(104, 140, 1)):
+        super(ProcessFrame, self).__init__(env)
+        self.new_shape = new_shape
+        self.observation_space = gym.spaces.Box(low=0, high=255, shape=new_shape, dtype=np.uint8)
 
     # override observation method s.t. it returns the down-sampled version
     def observation(self, obs):
         # generate 84x84 pixel frame
-        return ProcessFrame84.process(obs)
+        return ProcessFrame.process(self, obs)
 
     # form static method bound to the class itself to handle the process of generating the down-sampled frames
-    @staticmethod
-    def process(frame):
+    def process(self, frame):
         # form numpy array of gameplay frame in original shape of 240x256 pixel values of 3 colour channels (RGB)
         img = np.reshape(frame, [240, 256, 3]).astype(np.float32)
 
@@ -69,11 +69,12 @@ class ProcessFrame84(gym.ObservationWrapper):
 
         # down-scale frame to 1 channel 84x110 pixel values using INTER AREA
         # INTER AREA = resamples input image using pixel area relation
-        resized_screen = cv2.resize(img, (84, 110), interpolation=cv2.INTER_AREA)
+        resized_screen = cv2.resize(img, (self.new_shape[1], self.new_shape[1]), interpolation=cv2.INTER_AREA)
 
         # reshape to square 84x84 numpy array (of 8-bit unsigned integers) by cutting off redundant height
-        output = resized_screen[18:102, :]
-        output = np.reshape(output, [84, 84, 1]).astype(np.uint8)
+        crop_factor = int((self.new_shape[1] - self.new_shape[0]) / 2)
+        output = resized_screen[crop_factor:self.new_shape[1] - crop_factor, :]
+        output = np.reshape(output, [self.new_shape[0], self.new_shape[1], self.new_shape[2]]).astype(np.uint8)
 
         return output
 
@@ -125,8 +126,8 @@ class BufferWrapper(gym.ObservationWrapper):
 def make_env(env):
     # apply pipeline
     env = MaxAndSkipEnv(env)
-    env = ProcessFrame84(env)
+    env = ProcessFrame(env)
     env = ImageToPyTorch(env)
     env = BufferWrapper(env)
     
-    return JoypadSpace(env, COMPLEX_MOVEMENT)
+    return JoypadSpace(env, RIGHT_ONLY)

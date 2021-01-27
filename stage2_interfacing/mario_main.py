@@ -1,3 +1,4 @@
+import os
 import torch
 import torchvision
 import gym_super_mario_bros as gym_smb
@@ -60,7 +61,7 @@ print("obs space: ", env.observation_space)
 print("action space:", env.action_space)
 print("sample action: ", env.action_space.sample())
 
-pretrained = False
+pretrained = os.path.isfile("./episode_rewards.pkl")
 
 agent = network.Agent(
     state_shape=env.observation_space.shape,
