@@ -37,7 +37,7 @@ def plot_durations(ep_rewards):
 def render_state(four_frames):
     single_image = four_frames.squeeze(0)[-1]
     fig = plt.figure("Frame")
-    plt.imshow(single_image, cmap='gray')
+    plt.imshow(single_image)
     plt.title("Down-sampled 84x84 grayscale image")
     plt.draw()
     plt.pause(0.001)

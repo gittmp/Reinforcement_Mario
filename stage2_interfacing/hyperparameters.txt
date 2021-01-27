@@ -22,5 +22,5 @@ fc_output_widths={512}
 Wrappers:
 no_skip_frames=4,
 frame_buffer_len=2,
-downsampled_frame_size=(84, 84),
+downsampled_frame_size=(104, 140, 1),
 movement_type=COMPLEX_MOVEMENT

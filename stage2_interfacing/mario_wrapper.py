@@ -1,9 +1,46 @@
 import numpy as np
 from nes_py.wrappers import JoypadSpace  # converting actions to correct JoyPad representation
-from gym_super_mario_bros.actions import RIGHT_ONLY  # only permits moving to the right
 import collections  # for deque: insert(e_new) -> [e_new, e_0, ..., e_l-2] -> exit(e_l-1)
 import gym
 import cv2  # util for image manipulation
+
+
+# Limiting action set combinations:
+# actions for the simple run right environment
+RIGHT_ONLY = [
+    ['NOOP'],
+    ['right'],
+    ['right', 'A'],
+    ['right', 'B'],
+    ['right', 'A', 'B'],
+]
+
+# actions for very simple movement
+SIMPLE_MOVEMENT = [
+    ['NOOP'],
+    ['right'],
+    ['right', 'A'],
+    ['right', 'B'],
+    ['right', 'A', 'B'],
+    ['A'],
+    ['left'],
+]
+
+# actions for more complex movement
+COMPLEX_MOVEMENT = [
+    ['NOOP'],
+    ['right'],
+    ['right', 'A'],
+    ['right', 'B'],
+    ['right', 'A', 'B'],
+    ['A'],
+    ['left'],
+    ['left', 'A'],
+    ['left', 'B'],
+    ['left', 'A', 'B'],
+    ['down'],
+    ['up'],
+]
 
 
 # CLASSES / FUNCTIONS FOR WRAPPING ENVIRONMENT TO IMPROVE PERFORMANCE
