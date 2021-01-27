@@ -1,3 +1,5 @@
+# MARIO GYM ENV: https://github.com/Kautenja/gym-super-mario-bros
+
 import os
 import torch
 import torchvision
@@ -11,6 +13,7 @@ import mario_wrapper as wrapper
 import mario_network as network
 
 # import retro
+import time
 
 
 # plot function which plots durations the figure during training.
@@ -61,7 +64,7 @@ print("obs space: ", env.observation_space)
 print("action space:", env.action_space)
 print("sample action: ", env.action_space.sample())
 
-pretrained = os.path.isfile("./episode_rewards.pkl")
+pretrained = os.path.isfile("../stage3/params/episode_rewards.pkl")
 
 agent = network.Agent(
     state_shape=env.observation_space.shape,
@@ -78,14 +81,19 @@ agent = network.Agent(
 )
 
 if pretrained:
-    with open("episode_rewards.pkl", "rb") as f:
+    with open("../stage3/params/episode_rewards.pkl", "rb") as f:
         episode_rewards = pickle.load(f)
 else:
     episode_rewards = []
 
 training = True
-no_eps = 100
+no_eps = 25
 env.reset()
+
+# render_times = []
+action_times = []
+environment_times = []
+train_times = []
 
 for ep in tqdm(range(no_eps)):
     state = env.reset()
@@ -93,14 +101,31 @@ for ep in tqdm(range(no_eps)):
     total_reward = 0
     timestep = 0
 
+    # render_times_av = []
+    action_times_av = []
+    environment_times_av = []
+    train_times_av = []
+    plot_times_av = []
+
     while True:
         timestep += 1
+
+        # start = time.time()
+        #
         env.render()
 
         if timestep % 10 == 0:
             render_state(state)
+        #
+        # enlapsed = time.time() - start
+        # render_times_av.append(enlapsed)
+        start = time.time()
 
         action = agent.step(state)
+
+        enlapsed = time.time() - start
+        action_times_av.append(enlapsed)
+        start = time.time()
 
         # sample_action = torch.Tensor(env.action_space.sample())
         # print("Chosen action = ", action)
@@ -109,19 +134,27 @@ for ep in tqdm(range(no_eps)):
         successor, reward, terminal, info = env.step(int(action[0]))
         total_reward += reward
 
+        enlapsed = time.time() - start
+        environment_times_av.append(enlapsed)
+
         successor = torch.Tensor([successor])
         reward = torch.Tensor([reward]).unsqueeze(0)
         terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
 
         if training:
+            start = time.time()
+
             experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
             agent.memory.push(experience)
             agent.train()
 
+            enlapsed = time.time() - start
+            train_times_av.append(enlapsed)
+
         state = successor
 
         if terminal:
-            print("Info:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
+            print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
                   .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
             break
 
@@ -129,14 +162,44 @@ for ep in tqdm(range(no_eps)):
     print("\nTotal reward after episode {} is {}".format(ep + 1, episode_rewards[-1]))
     plot_durations(episode_rewards)
 
+    # average = sum(render_times_av) / len(render_times_av)
+    # print("    av time to render =", average)
+    # render_times.append(average)
+
+    average = sum(action_times_av) / len(action_times_av)
+    print("    av time to pick action =", average)
+    action_times.append(average)
+
+    average = sum(environment_times_av) / len(environment_times_av)
+    print("    av time to take action in env =", average)
+    environment_times.append(average)
+
+    average = sum(train_times_av) / len(train_times_av)
+    print("    av time to train network =", average)
+    train_times.append(average)
+
 if training:
-    with open("episode_rewards.pkl", "wb") as f:
+    with open("../stage3/params/episode_rewards.pkl", "wb") as f:
         pickle.dump(episode_rewards, f)
 
-    torch.save(agent.policy_network.state_dict(), "policy_network.pt")
-    torch.save(agent.target_network.state_dict(), "target_network.pt")
+    torch.save(agent.policy_network.state_dict(), "../stage3/params/policy_network.pt")
+    torch.save(agent.target_network.state_dict(), "../stage3/params/target_network.pt")
 
-    with open("buffer.pkl", "wb") as f:
+    with open("../stage3/params/buffer.pkl", "wb") as f:
         pickle.dump(agent.memory.buffer, f)
 
 env.close()
+
+print("Total time averages:")
+
+# average = sum(render_times) / len(render_times)
+# print("\n    av time to render =", average)
+
+average = sum(action_times) / len(action_times)
+print("    \nav time to pick action =", average)
+
+average = sum(environment_times) / len(environment_times)
+print("    av time to take action in env =", average)
+
+average = sum(train_times) / len(train_times)
+print("    av time to train network =", average)
