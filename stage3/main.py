@@ -9,8 +9,8 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 
-import mario_wrapper as wrapper
-import mario_network as network
+import wrapper as wrapper
+import network as network
 
 # import retro
 import time
