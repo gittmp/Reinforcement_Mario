@@ -1,15 +1,13 @@
 import os
 import torch
-import gym_super_mario_bros as gym_smb
 from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
 
-import wrapper as wrapper
-import network as network
-
-# import retro
-import time
+import wrapper
+import network
+from environment import SMBEnv
+# from nes_py import NESEnv
 
 
 # plot function which plots durations the figure during training.
@@ -43,10 +41,8 @@ def render_state(four_frames):
 
 
 game = 'SuperMarioBros-v0'
-env = gym_smb.make(game)
-
-# game = "SuperMarioBros-Nes"
-# env = retro.make(game).unwrapped
+env = SMBEnv()
+env = env.make(game)
 
 print("PRE-WRAPPING")
 print("obs space: ", env.observation_space)
@@ -80,8 +76,8 @@ if pretrained:
 else:
     episode_rewards = []
 
-training = True
-no_eps = 10
+training = False
+no_eps = 3
 env.reset()
 
 for ep in tqdm(range(no_eps)):
@@ -93,9 +89,9 @@ for ep in tqdm(range(no_eps)):
     while True:
         timestep += 1
 
-        # env.render()
-        # if timestep % 10 == 0:
-        #     render_state(state)
+        env.render()
+        if timestep % 10 == 0:
+            render_state(state)
 
         action = agent.step(state)
 
@@ -118,9 +114,10 @@ for ep in tqdm(range(no_eps)):
                   .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
             break
 
-    episode_rewards.append(total_reward)
-    print("\nTotal reward after episode {} is {}".format(ep + 1, episode_rewards[-1]))
-    plot_durations(episode_rewards)
+    print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
+    if training:
+        episode_rewards.append(total_reward)
+        plot_durations(episode_rewards)
 
 if training:
     with open("params/episode_rewards.pkl", "wb") as f:
