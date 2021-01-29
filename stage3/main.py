@@ -1,5 +1,3 @@
-# MARIO GYM ENV: https://github.com/Kautenja/gym-super-mario-bros
-
 import os
 import torch
 import gym_super_mario_bros as gym_smb
