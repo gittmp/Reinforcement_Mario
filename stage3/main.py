@@ -2,10 +2,8 @@
 
 import os
 import torch
-import torchvision
 import gym_super_mario_bros as gym_smb
 from tqdm import tqdm
-import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 
@@ -46,7 +44,7 @@ def render_state(four_frames):
     plt.pause(0.001)
 
 
-game = 'SuperMarioBros-1-1-v0'
+game = 'SuperMarioBros-v0'
 env = gym_smb.make(game)
 
 # game = "SuperMarioBros-Nes"
@@ -55,14 +53,12 @@ env = gym_smb.make(game)
 print("PRE-WRAPPING")
 print("obs space: ", env.observation_space)
 print("action space:", env.action_space)
-print("sample action: ", env.action_space.sample())
 
 env = wrapper.make_env(env)
 
 print("\nPOST-WRAPPING")
 print("obs space: ", env.observation_space)
 print("action space:", env.action_space)
-print("sample action: ", env.action_space.sample())
 
 pretrained = os.path.isfile("params/episode_rewards.pkl")
 
@@ -87,13 +83,8 @@ else:
     episode_rewards = []
 
 training = True
-no_eps = 25
+no_eps = 10
 env.reset()
-
-# render_times = []
-action_times = []
-environment_times = []
-train_times = []
 
 for ep in tqdm(range(no_eps)):
     state = env.reset()
@@ -101,55 +92,26 @@ for ep in tqdm(range(no_eps)):
     total_reward = 0
     timestep = 0
 
-    # render_times_av = []
-    action_times_av = []
-    environment_times_av = []
-    train_times_av = []
-    plot_times_av = []
-
     while True:
         timestep += 1
 
-        # start = time.time()
-        #
-        env.render()
-
-        if timestep % 10 == 0:
-            render_state(state)
-        #
-        # enlapsed = time.time() - start
-        # render_times_av.append(enlapsed)
-        start = time.time()
+        # env.render()
+        # if timestep % 10 == 0:
+        #     render_state(state)
 
         action = agent.step(state)
 
-        enlapsed = time.time() - start
-        action_times_av.append(enlapsed)
-        start = time.time()
-
-        # sample_action = torch.Tensor(env.action_space.sample())
-        # print("Chosen action = ", action)
-        # print("Sampled action = ", sample_action)
-
         successor, reward, terminal, info = env.step(int(action[0]))
         total_reward += reward
-
-        enlapsed = time.time() - start
-        environment_times_av.append(enlapsed)
 
         successor = torch.Tensor([successor])
         reward = torch.Tensor([reward]).unsqueeze(0)
         terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
 
         if training:
-            start = time.time()
-
             experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
             agent.memory.push(experience)
             agent.train()
-
-            enlapsed = time.time() - start
-            train_times_av.append(enlapsed)
 
         state = successor
 
@@ -161,22 +123,6 @@ for ep in tqdm(range(no_eps)):
     episode_rewards.append(total_reward)
     print("\nTotal reward after episode {} is {}".format(ep + 1, episode_rewards[-1]))
     plot_durations(episode_rewards)
-
-    # average = sum(render_times_av) / len(render_times_av)
-    # print("    av time to render =", average)
-    # render_times.append(average)
-
-    average = sum(action_times_av) / len(action_times_av)
-    print("    av time to pick action =", average)
-    action_times.append(average)
-
-    average = sum(environment_times_av) / len(environment_times_av)
-    print("    av time to take action in env =", average)
-    environment_times.append(average)
-
-    average = sum(train_times_av) / len(train_times_av)
-    print("    av time to train network =", average)
-    train_times.append(average)
 
 if training:
     with open("params/episode_rewards.pkl", "wb") as f:
@@ -190,16 +136,7 @@ if training:
 
 env.close()
 
-print("Total time averages:")
-
-# average = sum(render_times) / len(render_times)
-# print("\n    av time to render =", average)
-
-average = sum(action_times) / len(action_times)
-print("    \nav time to pick action =", average)
-
-average = sum(environment_times) / len(environment_times)
-print("    av time to take action in env =", average)
-
-average = sum(train_times) / len(train_times)
-print("    av time to train network =", average)
+print("\nTRAINING COMPLETE")
+print("Total episodes trained over:", len(episode_rewards))
+print("Average reward over all episodes:", sum(episode_rewards)/len(episode_rewards))
+print("Average reward over last training session:", sum(episode_rewards[-no_eps:])/no_eps)

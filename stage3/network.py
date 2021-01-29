@@ -171,8 +171,8 @@ class Agent:
         self.target_network = Network(state_shape, action_n).to(self.device)
 
         if self.pretrained:
-            self.policy_network.load_state_dict(torch.load("policy_network.pt", map_location=torch.device(self.device)))
-            self.policy_network.load_state_dict(torch.load("target_network.pt", map_location=torch.device(self.device)))
+            self.policy_network.load_state_dict(torch.load("params/policy_network.pt", map_location=torch.device(self.device)))
+            self.policy_network.load_state_dict(torch.load("params/target_network.pt", map_location=torch.device(self.device)))
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
