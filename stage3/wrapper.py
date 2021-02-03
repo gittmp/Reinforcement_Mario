@@ -7,7 +7,7 @@ import cv2  # util for image manipulation
 
 # Limiting action set combinations:
 # actions for the simple run right environment
-RIGHT_ONLY = [
+RIGHT = [
     ['NOOP'],
     ['right'],
     ['right', 'A'],
@@ -16,7 +16,7 @@ RIGHT_ONLY = [
 ]
 
 # actions for very simple movement
-SIMPLE_MOVEMENT = [
+SIMPLE = [
     ['NOOP'],
     ['right'],
     ['right', 'A'],
@@ -27,7 +27,7 @@ SIMPLE_MOVEMENT = [
 ]
 
 # actions for more complex movement
-COMPLEX_MOVEMENT = [
+COMPLEX = [
     ['NOOP'],
     ['right'],
     ['right', 'A'],
@@ -166,5 +166,6 @@ def make_env(env):
     env = ProcessFrame(env)
     env = ImageToPyTorch(env)
     env = BufferWrapper(env)
+    env = JoypadSpace(env, RIGHT)
     
-    return JoypadSpace(env, RIGHT_ONLY)
+    return env

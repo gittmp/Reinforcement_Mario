@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import wrapper
 import network
 from environment import SMBEnv
-# from nes_py import NESEnv
 
 
 # plot function which plots durations the figure during training.
@@ -44,15 +43,15 @@ game = 'SuperMarioBros-v0'
 env = SMBEnv()
 env = env.make(game)
 
-print("PRE-WRAPPING")
-print("obs space: ", env.observation_space)
-print("action space:", env.action_space)
+# print("PRE-WRAPPING")
+# print("obs space: ", env.observation_space)
+# print("action space:", env.action_space)
 
 env = wrapper.make_env(env)
 
-print("\nPOST-WRAPPING")
-print("obs space: ", env.observation_space)
-print("action space:", env.action_space)
+# print("\nPOST-WRAPPING")
+# print("obs space: ", env.observation_space)
+# print("action space:", env.action_space)
 
 pretrained = os.path.isfile("params/episode_rewards.pkl")
 
@@ -76,48 +75,72 @@ if pretrained:
 else:
     episode_rewards = []
 
-training = False
-no_eps = 3
+training = True
+no_eps = 100
 env.reset()
 
-for ep in tqdm(range(no_eps)):
-    state = env.reset()
-    state = torch.Tensor([state])
-    total_reward = 0
-    timestep = 0
+print("\nStarting training...\n")
+try:
+    for ep in tqdm(range(no_eps)):
+        state = env.reset()
+        state = torch.Tensor([state])
+        total_reward = 0
+        timestep = 0
 
-    while True:
-        timestep += 1
+        while True:
+            timestep += 1
 
-        env.render()
-        if timestep % 10 == 0:
-            render_state(state)
+            # env.render()
+            # if timestep % 10 == 0:
+            #     render_state(state)
 
-        action = agent.step(state)
+            action = agent.step(state)
 
-        successor, reward, terminal, info = env.step(int(action[0]))
-        total_reward += reward
+            successor, reward, terminal, info = env.step(int(action[0]))
+            total_reward += reward
 
-        successor = torch.Tensor([successor])
-        reward = torch.Tensor([reward]).unsqueeze(0)
-        terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
+            successor = torch.Tensor([successor])
+            reward = torch.Tensor([reward]).unsqueeze(0)
+            terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
 
+            if training:
+                experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
+                agent.memory.push(experience)
+                agent.train()
+
+            state = successor
+
+            if terminal:
+                # print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
+                #       .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
+                break
+
+        # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
         if training:
-            experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
-            agent.memory.push(experience)
-            agent.train()
+            episode_rewards.append(total_reward)
+            # plot_durations(episode_rewards)
 
-        state = successor
+            """if ep % 100 == 0:
+                with open("params/episode_rewards.pkl", "wb") as f:
+                    pickle.dump(episode_rewards, f)
+    
+                torch.save(agent.policy_network.state_dict(), "params/policy_network.pt")
+                torch.save(agent.target_network.state_dict(), "params/target_network.pt")
+    
+                with open("params/buffer.pkl", "wb") as f:
+                    pickle.dump(agent.memory.buffer, f)"""
 
-        if terminal:
-            print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
-                  .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
-            break
+except (KeyboardInterrupt, InterruptedError):
+    save_params = input("Would you like to save these parameters? [y/n]")
+    if training and save_params == 'y':
+        with open("params/episode_rewards.pkl", "wb") as f:
+            pickle.dump(episode_rewards, f)
 
-    print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
-    if training:
-        episode_rewards.append(total_reward)
-        plot_durations(episode_rewards)
+        torch.save(agent.policy_network.state_dict(), "params/policy_network.pt")
+        torch.save(agent.target_network.state_dict(), "params/target_network.pt")
+
+        with open("params/buffer.pkl", "wb") as f:
+            pickle.dump(agent.memory.buffer, f)
 
 if training:
     with open("params/episode_rewards.pkl", "wb") as f:
@@ -128,6 +151,8 @@ if training:
 
     with open("params/buffer.pkl", "wb") as f:
         pickle.dump(agent.memory.buffer, f)
+
+    print("Parameters saved!")
 
 env.close()
 

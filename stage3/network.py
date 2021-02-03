@@ -114,7 +114,7 @@ class Memory:
             with open("params/buffer.pkl", "rb") as f:
                 self.buffer = pickle.load(f)
             self.buffer_capacity = self.buffer.maxlen
-            print("Buffer remembered")
+            # print("Buffer remembered")
         else:
             self.buffer = collections.deque(maxlen=buffer_capacity)
             self.buffer_capacity = buffer_capacity
