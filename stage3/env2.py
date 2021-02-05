@@ -12,6 +12,8 @@ class SMBEnv(SMBGym.SuperMarioBrosEnv):
     def make(game):
         return SMBGym.make(game)
 
+    # give negative reward if stationary for too long
+
     def _get_reward(self):
         existing_reward = self._time_penalty + self._death_penalty
 
