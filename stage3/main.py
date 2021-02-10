@@ -1,12 +1,12 @@
 import os
+import math
 import torch
 from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
 
-import wrapper
 import network
-from environment import SMBEnv
+from environment import *
 
 
 # plot function which plots durations the figure during training.
@@ -39,30 +39,19 @@ def render_state(four_frames):
     plt.pause(0.001)
 
 
-game = 'SuperMarioBros-v0'
-env = SMBEnv()
-env = env.make(game)
-
-# print("PRE-WRAPPING")
-# print("obs space: ", env.observation_space)
-# print("action space:", env.action_space)
-
-env = wrapper.make_env(env)
-
-# print("\nPOST-WRAPPING")
-# print("obs space: ", env.observation_space)
-# print("action space:", env.action_space)
-
+game = 'SuperMarioBros-1-1-v0'
+env = make_env(game)
 training = True
-no_eps = 100
-ncc = True
+no_eps = 2000
+ncc = False
 
 if ncc:
     path = "ncc_params/"
 else:
     path = "params/"
 
-pretrained = os.path.isfile(path + "episode_rewards.pkl")
+# pretrained = os.path.isfile(path + "episode_rewards.pkl")
+pretrained = False
 
 if pretrained:
     with open(path + "episode_rewards.pkl", "rb") as f:
@@ -87,79 +76,82 @@ agent = network.Agent(
     pretrained=pretrained
 )
 
-print("\nStarting training...\n")
-try:
-    for ep in tqdm(range(no_eps)):
-        state = env.reset()
-        state = torch.Tensor([state])
-        total_reward = 0
-        timestep = 0
+print("\nStarting episodes...\n")
+# try:
+for ep in tqdm(range(no_eps)):
+    state = env.reset()
+    state = torch.Tensor([state])
+    total_reward = 0
+    timestep = 0
 
-        while True:
-            timestep += 1
+    while True:
+        timestep += 1
 
-            # env.render()
-            #
-            # if timestep % 10 == 0:
-            #     render_state(state)
+        env.render()
+        #
+        # if timestep % 10 == 0:
+        #     render_state(state)
 
-            action = agent.step(state)
+        action = agent.step(state)
 
-            successor, reward, terminal, info = env.step(int(action[0]))
-            total_reward += reward
+        successor, reward, terminal, info = env.step(int(action[0]))
+        total_reward += reward
 
-            successor = torch.Tensor([successor])
-            reward = torch.Tensor([reward]).unsqueeze(0)
-            terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
+        successor = torch.Tensor([successor])
+        reward = torch.Tensor([reward]).unsqueeze(0)
+        terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
 
-            if training:
-                experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
-                agent.memory.push(experience)
-                agent.train()
-
-            state = successor
-
-            if terminal:
-                # print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
-                #       .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
-                break
-
-        # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
         if training:
-            episode_rewards.append(total_reward)
-            # plot_durations(episode_rewards)
+            experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
+            agent.memory.push(experience)
+            agent.train()
 
-            """if ep % 100 == 0:
-                with open(path + "episode_rewards.pkl", "wb") as f:
-                    pickle.dump(episode_rewards, f)
-    
-                torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
-                torch.save(agent.target_network.state_dict(), path + "target_network.pt")
-    
-                with open(path + "buffer.pkl", "wb") as f:
-                    pickle.dump(agent.memory.buffer, f)"""
+        state = successor
 
-except (KeyboardInterrupt, InterruptedError):
+        if terminal:
+            print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
+                  .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
+            plot_durations(episode_rewards)
+            break
+
+    # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
     if training:
-        print("Saving terminated parameters...")
-        with open(path + "terminated_episode_rewards.pkl", "wb") as f:
-            pickle.dump(episode_rewards, f)
+        episode_rewards.append(total_reward)
+        # plot_durations(episode_rewards)
 
-        torch.save(agent.policy_network.state_dict(), path + "terminated_policy_network.pt")
-        torch.save(agent.target_network.state_dict(), path + "terminated_target_network.pt")
+        if math.floor(no_eps/4):
+            print("automatically saving prams at episode {}".format(ep))
 
-        with open(path + "terminated_buffer.pkl", "wb") as f:
-            pickle.dump(agent.memory.buffer, f)
+            with open(path + "episode_rewards.pkl", "wb") as f:
+                pickle.dump(episode_rewards, f)
+
+            with open(path + "buffer.pkl", "wb") as f:
+                pickle.dump(agent.memory.buffer, f)
+
+            torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
+            torch.save(agent.target_network.state_dict(), path + "target_network.pt")
+#
+# except Exception:
+#     if training:
+#         print("Saving terminated parameters...")
+#         with open(path + "terminated_episode_rewards.pkl", "wb") as f:
+#             pickle.dump(episode_rewards, f)
+#
+#         with open(path + "terminated_buffer.pkl", "wb") as f:
+#             pickle.dump(agent.memory.buffer, f)
+#
+#         torch.save(agent.policy_network.state_dict(), path + "terminated_policy_network.pt")
+#         torch.save(agent.target_network.state_dict(), path + "terminated_target_network.pt")
 
 if training:
     with open(path + "episode_rewards.pkl", "wb") as f:
         pickle.dump(episode_rewards, f)
 
-    torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
-    torch.save(agent.target_network.state_dict(), path + "target_network.pt")
-
     with open(path + "buffer.pkl", "wb") as f:
         pickle.dump(agent.memory.buffer, f)
+
+    torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
+    torch.save(agent.target_network.state_dict(), path + "target_network.pt")
 
     print("Parameters saved!")
 

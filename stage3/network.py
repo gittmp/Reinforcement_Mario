@@ -56,7 +56,7 @@ class Network(nn.Module):
             # VERSION: testing architecture from 'Mastering the game of Go without human knowledge'
             self.conv = nn.Sequential(
                 nn.Conv2d(in_features[0], 256, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(256),
                 nn.ReLU()
             )
 
@@ -66,10 +66,10 @@ class Network(nn.Module):
             # 19 or 32 of these following residual blocks
             self.res = nn.Sequential(
                 nn.Conv2d(conv_out_size, 256, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(256),
                 nn.ReLU(),
                 nn.Conv2d(256, 256, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(256),
                 # here add a residual skip connection that adds the input to the block
                 nn.ReLU()
             )
@@ -79,7 +79,7 @@ class Network(nn.Module):
 
             self.policy_head = nn.Sequential(
                 nn.Conv2d(res_out_size, 2, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(2),
                 nn.ReLU(),
                 nn.Linear(2, in_features[1] * in_features[2] + 1)
             )
@@ -89,7 +89,7 @@ class Network(nn.Module):
 
             self.value_head = nn.Sequential(
                 nn.Conv2d(pol_out_size, 1, kernel_size=1, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(1),
                 nn.ReLU(),
                 nn.Linear(1, 356),
                 nn.ReLU(),
