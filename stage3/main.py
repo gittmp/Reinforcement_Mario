@@ -111,7 +111,7 @@ for ep in tqdm(range(no_eps)):
         if terminal:
             print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
                   .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
-            plot_durations(episode_rewards)
+            # plot_durations(episode_rewards)
             break
 
     # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))

@@ -60,6 +60,8 @@ class SkipAndReward(gym.Wrapper):
         self.position_buffer = deque(maxlen=6)
         self.prev_score = 0
         self.prev_status = 'small'
+        self.prev_grad = 1
+        self.zero_grad_counter = 0
 
     def x_gradient(self):
         entries = len(self.position_buffer)
@@ -72,18 +74,18 @@ class SkipAndReward(gym.Wrapper):
 
         gradient = round(gradient / entries)
 
-        # if len(self.position_buffer) > 1:
-        #     gradient = self.position_buffer[-1] - self.position_buffer[-2]
-        # else:
-        #     gradient = 0
+        if gradient == 0 and self.prev_grad == 0:
+            gradient = self.zero_grad_counter * -0.1
+            self.zero_grad_counter += 1
+        else:
+            self.prev_grad = gradient
+            self.zero_grad_counter = 0
 
         return gradient
 
     def modify_reward(self, rew, data):
         # rew = v + c + d
         # v = difference in x positions [-15, 15]; c = difference in the game clock [-15, 0]; d = death penalty {-15, 0}
-
-        print("Original reward = {}".format(rew))
 
         # get average gradient of x change in last 4 moves
         self.position_buffer.append(data['x_pos'])
@@ -107,9 +109,12 @@ class SkipAndReward(gym.Wrapper):
             status_reward = 0
             self.prev_status = 'small'
 
-        reward = x_reward * (abs(rew) + flag_reward + score_reward + status_reward)
+        reward = round(x_reward + abs(rew) + flag_reward + score_reward + status_reward)
 
-        print("Modified reward = (x = {}, flag={}, score={}, status={}) = {}".format(x_reward, flag_reward, score_reward, status_reward, reward))
+        if reward > 15:
+            reward = 15
+        if reward < -15:
+            reward = -15
 
         return reward
 
@@ -133,6 +138,8 @@ class SkipAndReward(gym.Wrapper):
         # stack elements of obs buffer = create new array containing the two states in the obs buffer
         # then take the max of this, to return the maximal state (of the last two remaining in the buffer)
         max_frame = np.max(np.stack(self._frame_buffer), axis=0)
+
+        print("collected reward = {}".format(total_reward))
 
         # return this maximum frame, the total reward generated over the `skip` frames, and whether the game has ended
         print("total found reward = {}".format(total_reward))
