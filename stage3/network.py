@@ -56,7 +56,7 @@ class Network(nn.Module):
             # VERSION: testing architecture from 'Mastering the game of Go without human knowledge'
             self.conv = nn.Sequential(
                 nn.Conv2d(in_features[0], 256, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(256),
                 nn.ReLU()
             )
 
@@ -66,10 +66,10 @@ class Network(nn.Module):
             # 19 or 32 of these following residual blocks
             self.res = nn.Sequential(
                 nn.Conv2d(conv_out_size, 256, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(256),
                 nn.ReLU(),
                 nn.Conv2d(256, 256, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(256),
                 # here add a residual skip connection that adds the input to the block
                 nn.ReLU()
             )
@@ -79,7 +79,7 @@ class Network(nn.Module):
 
             self.policy_head = nn.Sequential(
                 nn.Conv2d(res_out_size, 2, kernel_size=3, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(2),
                 nn.ReLU(),
                 nn.Linear(2, in_features[1] * in_features[2] + 1)
             )
@@ -89,7 +89,7 @@ class Network(nn.Module):
 
             self.value_head = nn.Sequential(
                 nn.Conv2d(pol_out_size, 1, kernel_size=1, stride=1),
-                # put batch normalisation here
+                nn.BatchNorm2d(1),
                 nn.ReLU(),
                 nn.Linear(1, 356),
                 nn.ReLU(),
@@ -114,7 +114,6 @@ class Memory:
             with open("params/buffer.pkl", "rb") as f:
                 self.buffer = pickle.load(f)
             self.buffer_capacity = self.buffer.maxlen
-            print("Buffer remembered")
         else:
             self.buffer = collections.deque(maxlen=buffer_capacity)
             self.buffer_capacity = buffer_capacity
@@ -185,9 +184,7 @@ class Agent:
             return torch.tensor([[random.randrange(self.action_n)]])
         else:
             nn_out = self.policy_network(state.to(self.device))
-            # print("Neural network output = ", nn_out)
             return torch.argmax(nn_out).unsqueeze(0).unsqueeze(0).cpu()
-            # return nn_out.squeeze(0).cpu()
 
     def target_update(self):
         self.target_network.load_state_dict(self.policy_network.state_dict())
