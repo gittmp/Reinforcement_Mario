@@ -42,16 +42,15 @@ def render_state(four_frames):
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
 training = True
+ncc = True
 no_eps = 2000
-ncc = False
 
 if ncc:
     path = "ncc_params/"
 else:
     path = "params/"
 
-# pretrained = os.path.isfile(path + "episode_rewards.pkl")
-pretrained = False
+pretrained = False and os.path.isfile(path + "policy_network.pt")
 
 if pretrained:
     with open(path + "episode_rewards.pkl", "rb") as f:
@@ -60,7 +59,6 @@ else:
     episode_rewards = []
 
 env.reset()
-
 
 agent = network.Agent(
     state_shape=env.observation_space.shape,
@@ -77,7 +75,6 @@ agent = network.Agent(
 )
 
 print("\nStarting episodes...\n")
-# try:
 for ep in tqdm(range(no_eps)):
     state = env.reset()
     state = torch.Tensor([state])
@@ -87,8 +84,8 @@ for ep in tqdm(range(no_eps)):
     while True:
         timestep += 1
 
-        env.render()
-        #
+        # env.render()
+
         # if timestep % 10 == 0:
         #     render_state(state)
 
@@ -119,7 +116,7 @@ for ep in tqdm(range(no_eps)):
         episode_rewards.append(total_reward)
         # plot_durations(episode_rewards)
 
-        if math.floor(no_eps/4):
+        if ep % math.floor(no_eps / 4) == 0:
             print("automatically saving prams at episode {}".format(ep))
 
             with open(path + "episode_rewards.pkl", "wb") as f:
@@ -130,18 +127,6 @@ for ep in tqdm(range(no_eps)):
 
             torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
             torch.save(agent.target_network.state_dict(), path + "target_network.pt")
-#
-# except Exception:
-#     if training:
-#         print("Saving terminated parameters...")
-#         with open(path + "terminated_episode_rewards.pkl", "wb") as f:
-#             pickle.dump(episode_rewards, f)
-#
-#         with open(path + "terminated_buffer.pkl", "wb") as f:
-#             pickle.dump(agent.memory.buffer, f)
-#
-#         torch.save(agent.policy_network.state_dict(), path + "terminated_policy_network.pt")
-#         torch.save(agent.target_network.state_dict(), path + "terminated_target_network.pt")
 
 if training:
     with open(path + "episode_rewards.pkl", "wb") as f:
@@ -153,7 +138,7 @@ if training:
     torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
     torch.save(agent.target_network.state_dict(), path + "target_network.pt")
 
-    print("Parameters saved!")
+    print("Final parameters saved!")
 
 env.close()
 

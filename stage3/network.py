@@ -114,7 +114,6 @@ class Memory:
             with open("params/buffer.pkl", "rb") as f:
                 self.buffer = pickle.load(f)
             self.buffer_capacity = self.buffer.maxlen
-            # print("Buffer remembered")
         else:
             self.buffer = collections.deque(maxlen=buffer_capacity)
             self.buffer_capacity = buffer_capacity
@@ -185,9 +184,7 @@ class Agent:
             return torch.tensor([[random.randrange(self.action_n)]])
         else:
             nn_out = self.policy_network(state.to(self.device))
-            # print("Neural network output = ", nn_out)
             return torch.argmax(nn_out).unsqueeze(0).unsqueeze(0).cpu()
-            # return nn_out.squeeze(0).cpu()
 
     def target_update(self):
         self.target_network.load_state_dict(self.policy_network.state_dict())

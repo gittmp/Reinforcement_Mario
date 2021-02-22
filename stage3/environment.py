@@ -56,20 +56,21 @@ class SkipAndReward(gym.Wrapper):
         super(SkipAndReward, self).__init__(env)
         self.env = env
         self._skip = skip
-        self._frame_buffer = deque(maxlen=2)
-        self.position_buffer = deque(maxlen=6)
+        self.frame_buffer = deque(maxlen=2)
+        self.x_buffer = deque(maxlen=7)
+        self.reward_buffer = []
         self.prev_score = 0
         self.prev_status = 'small'
         self.prev_grad = 1
         self.zero_grad_counter = 0
 
     def x_gradient(self):
-        entries = len(self.position_buffer)
+        entries = len(self.x_buffer)
         gradient = 0
 
         for i in range(1, entries):
-            x2 = self.position_buffer[i-1]
-            x1 = self.position_buffer[i]
+            x2 = self.x_buffer[i - 1]
+            x1 = self.x_buffer[i]
             gradient += x1 - x2
 
         gradient = round(gradient / entries)
@@ -88,7 +89,7 @@ class SkipAndReward(gym.Wrapper):
         # v = difference in x positions [-15, 15]; c = difference in the game clock [-15, 0]; d = death penalty {-15, 0}
 
         # get average gradient of x change in last 4 moves
-        self.position_buffer.append(data['x_pos'])
+        self.x_buffer.append(data['x_pos'])
         x_reward = self.x_gradient()
 
         if data['flag_get']:
@@ -116,6 +117,8 @@ class SkipAndReward(gym.Wrapper):
         if reward < -15:
             reward = -15
 
+        self.reward_buffer.append(reward)
+
         return reward
 
     # override step method to go forward `skip` frames after picking `action` in current frame
@@ -128,7 +131,7 @@ class SkipAndReward(gym.Wrapper):
         for _ in range(self._skip):
             state, reward, terminal, info = self.env.step(action)
             reward = self.modify_reward(reward, info)
-            self._frame_buffer.append(state)
+            self.frame_buffer.append(state)
             total_reward += reward
 
             # if reach the end of an episode, escape and leave obs buffer containing only the last 2 frames seen
@@ -137,22 +140,26 @@ class SkipAndReward(gym.Wrapper):
 
         # stack elements of obs buffer = create new array containing the two states in the obs buffer
         # then take the max of this, to return the maximal state (of the last two remaining in the buffer)
-        max_frame = np.max(np.stack(self._frame_buffer), axis=0)
-
-        print("collected reward = {}".format(total_reward))
+        max_frame = np.max(np.stack(self.frame_buffer), axis=0)
 
         # return this maximum frame, the total reward generated over the `skip` frames, and whether the game has ended
-        print("total found reward = {}".format(total_reward))
         return max_frame, total_reward, terminal, info
 
     # override reset method so that it also resets the internal obs buffer to only hold the initial state
     def reset(self):
-        self._frame_buffer.clear()
-        state = self.env.reset()
-        self._frame_buffer.append(state)
-        self.position_buffer.clear()
+        length = len(self.reward_buffer)
+        if length > 0:
+            print("Mean reward over last {} time-steps = {:.1f}\n".format(length, sum(self.reward_buffer) / length))
+
+        self.reward_buffer = []
+        self.frame_buffer.clear()
+        self.x_buffer.clear()
         self.prev_score = 0
         self.prev_status = 'small'
+
+        state = self.env.reset()
+        self.frame_buffer.append(state)
+
         return state
 
 
