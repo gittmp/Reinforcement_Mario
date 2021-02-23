@@ -42,7 +42,9 @@ def render_state(four_frames):
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
 training = True
-ncc = True
+ncc = False
+plot = False
+pretrained = 10
 no_eps = 2000
 
 if ncc:
@@ -50,11 +52,12 @@ if ncc:
 else:
     path = "params/"
 
-pretrained = False and os.path.isfile(path + "policy_network.pt")
+pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 
 if pretrained:
     with open(path + "episode_rewards.pkl", "rb") as f:
         episode_rewards = pickle.load(f)
+        print("loaded {} episode rewards".format(len(episode_rewards)))
 else:
     episode_rewards = []
 
@@ -84,37 +87,44 @@ for ep in tqdm(range(no_eps)):
     while True:
         timestep += 1
 
-        # env.render()
+        if plot:
+            env.render()
 
-        # if timestep % 10 == 0:
-        #     render_state(state)
+            if timestep % 10 == 0:
+                render_state(state)
 
         action = agent.step(state)
 
         successor, reward, terminal, info = env.step(int(action[0]))
         total_reward += reward
-
         successor = torch.Tensor([successor])
-        reward = torch.Tensor([reward]).unsqueeze(0)
-        terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
 
         if training:
-            experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
-            agent.memory.push(experience)
-            agent.train()
+            experience = (
+                state.float(),
+                action.float(),
+                torch.Tensor([reward]).unsqueeze(0).float(),
+                successor.float(),
+                torch.Tensor([int(terminal)]).unsqueeze(0).float()
+            )
+            agent.train(experience)
 
         state = successor
 
         if terminal:
             print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
                   .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
-            # plot_durations(episode_rewards)
+
+            if plot:
+                plot_durations(episode_rewards)
+
             break
 
-    # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
     if training:
         episode_rewards.append(total_reward)
-        # plot_durations(episode_rewards)
+
+        if plot:
+            plot_durations(episode_rewards)
 
         if ep % math.floor(no_eps / 4) == 0:
             print("automatically saving prams at episode {}".format(ep))
