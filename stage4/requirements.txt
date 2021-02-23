@@ -1,0 +1,11 @@
+gym-super-mario-bros
+os
+torch
+tqdm
+pickle
+matplotlib.pyplot
+numpy
+torch.nn
+random
+collections
+cv2

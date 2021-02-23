@@ -4,6 +4,7 @@ import pickle
 import torch.nn as nn
 import random
 import collections
+import math
 
 
 class Network(nn.Module):
@@ -102,6 +103,155 @@ class Network(nn.Module):
         return self.fc(output)
 
 
+class BinarySumTree(object):
+    def __init__(self, maxlen=100000):
+        # specify the max number of leaves holding priorities, and buffer holding experiences
+        self.maxlen = maxlen
+        self.buffer = np.zeros(maxlen, dtype=object)
+        self.pointer = 0
+        self.full = False
+
+        # generate tree with all node values 0 (maxlen nodes, each with 2 children, minus root)
+        self.tree = np.zeros(2 * maxlen - 1)
+
+    def add(self, priority, data):
+        # update data buffer
+        self.buffer[self.pointer] = data
+
+        # update tree leaves L -> R
+        # fill leaves L -> R
+        index = self.pointer + self.maxlen - 1
+        self.update(index, priority)
+        self.pointer += 1
+
+        # if buffer is full, overwrite L -> R
+        if self.pointer >= self.maxlen:
+            self.full = True
+            self.pointer = 0
+
+    def update(self, i, p):
+        # determine difference between old and new priority, then update
+        diff = p - self.tree[i]
+        self.tree[i] = p
+
+        # backpropagate updates
+        while i != 0:
+            # need to update priority scores of internal nodes above updated leaf (as these sums depend on it)
+            i = (i - 1) // 2
+            self.tree[i] += diff
+
+    def get_leaf(self, val):
+        # output: leaf index, priority value, corresponding transition
+        node = 0
+        left = 1
+        right = 2
+
+        while left < len(self.tree):
+            # search down the tree to find the highest priority node
+            if val <= self.tree[left]:
+                node = left
+            else:
+                val -= self.tree[left]
+                node = right
+
+            left = 2 * node + 1
+            right = node + 1
+
+        return node, self.tree[node], self.buffer[node - self.maxlen + 1]
+
+    def total_priority(self):
+        # return root node, i.e. sum of priorities
+        return self.tree[0]
+
+
+class PrioritisedMemory:
+    def __init__(self, shape, device, batch=32):
+        self.epsilon = 0.02
+        self.alpha = 0.6
+        self.beta = 0.4
+        self.beta_increment = 0.001
+        self.error_limit = 1.0
+        self.batch_size = batch
+        self.state_shape = shape
+        self.device = device
+        self.tree = BinarySumTree()
+
+    def size(self):
+        if self.tree.full:
+            return self.tree.maxlen
+        else:
+            return self.tree.pointer
+
+    def push(self, experience):
+        # retrieve the max priority
+        maximum = np.max(self.tree.tree[-self.tree.maxlen:])
+
+        if maximum == 0:
+            maximum = self.error_limit
+
+        self.tree.add(maximum, experience)
+
+    def sample(self):
+        batch = []
+        indices = np.empty((self.batch_size, ), dtype=np.int32)
+        weights = np.empty((self.batch_size, 1), dtype=np.float32)
+
+        # increment beta each time we sample, annealing towards 1
+        self.beta = min(1.0, self.beta + self.beta_increment)
+
+        # calculate maximum weight
+        min_priority = np.min(self.tree.tree[-self.tree.maxlen:]) / self.tree.total_priority()
+        max_weight = pow(min_priority * self.batch_size, -self.beta)
+
+        # divide range into sections
+        section = math.floor(self.tree.total_priority() / self.batch_size)
+
+        # uniformly sample transitions from each section
+        for i in range(self.batch_size):
+            low = section * i
+            high = section * (i + 1)
+            index, priority, transition = self.tree.get_leaf(np.random.uniform(low, high))
+
+            p_j = priority / self.tree.total_priority()
+            weights[i, 0] = pow(p_j * self.batch_size, -self.beta) / max_weight
+            indices[i] = index
+            batch.append([transition])
+
+        # convert batch to torch
+        state_batch = torch.zeros(self.batch_size, *self.state_shape)
+        action_batch = torch.zeros(self.batch_size, 1)
+        reward_batch = torch.zeros(self.batch_size, 1)
+        successor_batch = torch.zeros(self.batch_size, *self.state_shape)
+        terminal_batch = torch.zeros(self.batch_size, 1)
+
+        for i in range(len(batch)):
+            item = batch[i]
+
+            state_batch[i] = item[0][0]
+            action_batch[i] = item[0][1]
+            reward_batch[i] = item[0][2]
+            successor_batch[i] = item[0][3]
+            terminal_batch[i] = item[0][4]
+
+        batch = {
+            'states': state_batch.to(self.device),
+            'actions': action_batch.to(self.device),
+            'rewards': reward_batch.to(self.device),
+            'successors': successor_batch.to(self.device),
+            'terminals': terminal_batch.to(self.device)
+        }
+
+        return indices, batch, weights
+
+    def update(self, indices, errors):
+        errors += self.epsilon
+        priorities = np.minimum(errors.detach().numpy(), self.error_limit)
+        priorities = np.power(priorities, self.alpha)
+
+        for index, priority in zip(indices, priorities):
+            self.tree.update(index, priority)
+
+
 class Memory:
     def __init__(self, state_shape, buffer_capacity, batch_size, pretrained, device):
 
@@ -174,8 +324,7 @@ class Agent:
             self.policy_network.load_state_dict(torch.load("params/target_network.pt", map_location=torch.device(self.device)))
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
-
-        self.memory = Memory(state_shape, buffer_capacity, batch_size, pretrained, self.device)
+        self.memory = PrioritisedMemory(self.state_shape, self.device, self.batch_size)
 
     def step(self, state):
         self.timestep += 1
@@ -189,18 +338,29 @@ class Agent:
     def target_update(self):
         self.target_network.load_state_dict(self.policy_network.state_dict())
 
-    def train(self):
-        if len(self.memory.buffer) < self.batch_size:
+    def train(self, exp):
+        self.memory.push(exp)
+
+        if self.memory.size() < self.batch_size * 100:
             return
 
-        states, actions, rewards, successors, terminals = self.memory.sample()
+        # states, actions, rewards, successors, terminals = self.memory.sample()
+        indices, batch, weights = self.memory.sample()
+        states = batch['states']
+        actions = batch['actions']
+        rewards = batch['rewards']
+        successors = batch['successors']
+        terminals = batch['terminals']
 
         self.optimiser.zero_grad()
 
         q_vals = self.policy_network(states).gather(1, actions.long())
         targets = rewards + torch.mul((self.gamma * self.target_network(successors).max(1).values.unsqueeze(1)), 1 - terminals)
 
-        loss = self.loss(q_vals, targets)
+        abs_errors = torch.abs(targets - q_vals)
+        self.memory.update(indices, abs_errors)
+
+        loss = (torch.tensor(weights) * self.loss(q_vals, targets)).mean()
         loss.backward()
         self.optimiser.step()
 
