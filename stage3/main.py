@@ -41,20 +41,22 @@ def render_state(four_frames):
 
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
-training = True
+training = False
 ncc = True
-no_eps = 2000
+pretrained = True
+no_eps = 5
 
 if ncc:
     path = "ncc_params/"
 else:
     path = "params/"
 
-pretrained = False and os.path.isfile(path + "policy_network.pt")
+pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 
 if pretrained:
     with open(path + "episode_rewards.pkl", "rb") as f:
         episode_rewards = pickle.load(f)
+        print("Pretrained!")
 else:
     episode_rewards = []
 
@@ -84,7 +86,7 @@ for ep in tqdm(range(no_eps)):
     while True:
         timestep += 1
 
-        # env.render()
+        env.render()
 
         # if timestep % 10 == 0:
         #     render_state(state)
