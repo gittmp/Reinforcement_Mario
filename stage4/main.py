@@ -34,7 +34,7 @@ def render_state(four_frames):
     single_image = four_frames.squeeze(0)[-1]
     fig = plt.figure("Frame")
     plt.imshow(single_image)
-    plt.title("Down-sampled 84x84 grayscale image")
+    plt.title("Down-sampled image")
     plt.draw()
     plt.pause(0.001)
 
@@ -43,14 +43,14 @@ game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
 training = True
 ncc = False
-plot = False
+plot = True
 pretrained = False
-no_eps = 2000
+no_eps = 1
 
 if ncc:
-    path = "ncc_params/"
+    path = "ncc_params4/"
 else:
-    path = "params/"
+    path = "params4/"
 
 pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 
@@ -126,24 +126,28 @@ for ep in tqdm(range(no_eps)):
         if plot:
             plot_durations(episode_rewards)
 
-        if ep % math.floor(no_eps / 4) == 0:
-            print("automatically saving prams at episode {}".format(ep))
+        if ep % max(1.0, math.floor(no_eps / 4)) == 0:
+            print("automatically saving params4 at episode {}".format(ep))
 
             with open(path + "episode_rewards.pkl", "wb") as f:
                 pickle.dump(episode_rewards, f)
+                print("   saved rewards to: {}".format(path + "episode_rewards.pkl"))
 
             with open(path + "buffer.pkl", "wb") as f:
-                pickle.dump(agent.memory, f)
+                pickle.dump(agent.memory.tree, f)
+                print("   saved memory tree to: {}".format(path + "buffer.pkl"))
 
             torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
             torch.save(agent.target_network.state_dict(), path + "target_network.pt")
+            print("   saved policy network to: {}".format(path + "policy_network.pt"))
+            print("   saved target network to: {}".format(path + "target_network.pt"))
 
 if training:
     with open(path + "episode_rewards.pkl", "wb") as f:
         pickle.dump(episode_rewards, f)
 
     with open(path + "buffer.pkl", "wb") as f:
-        pickle.dump(agent.memory.buffer, f)
+        pickle.dump(agent.memory.tree, f)
 
     torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
     torch.save(agent.target_network.state_dict(), path + "target_network.pt")

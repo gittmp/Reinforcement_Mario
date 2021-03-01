@@ -27,7 +27,6 @@ SIMPLE = [
     ['right', 'B'],
     ['right', 'A', 'B'],
     ['A'],
-    ['A', 'B'],
     ['left']
 ]
 
@@ -45,6 +44,18 @@ COMPLEX = [
     ['left', 'A', 'B'],
     ['down'],
     ['up'],
+]
+
+# Custom action combination
+ACTION_SET = [
+    ['NOOP'],
+    ['right'],
+    ['right', 'A'],
+    ['right', 'B'],
+    ['right', 'A', 'B'],
+    ['A'],
+    ['left'],
+    ['left', 'A']
 ]
 
 
@@ -166,9 +177,10 @@ class SkipAndReward(gym.Wrapper):
 # Wrapper (for observation space) to down-sample frame to numpy array of 84x84 greyscale pixels
 class ProcessFrame(gym.ObservationWrapper):
     # represent the observation space as a box of 84x84 pixel values with only 1 colour channel (greyscale)
-    def __init__(self, env=None, new_shape=(104, 140, 1)):
+    def __init__(self, env=None, new_shape=(104, 140, 1), old_shape=(240, 256, 3)):
         super(ProcessFrame, self).__init__(env)
         self.env = env
+        self.old_shape = [old_shape[0], old_shape[1], old_shape[2]]
         self.new_shape = new_shape
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=new_shape, dtype=np.uint8)
 
@@ -180,7 +192,7 @@ class ProcessFrame(gym.ObservationWrapper):
     # form static method bound to the class itself to handle the process of generating the down-sampled frames
     def process(self, frame):
         # form numpy array of gameplay frame in original shape of 240x256 pixel values of 3 colour channels (RGB)
-        img = np.reshape(frame, [240, 256, 3]).astype(np.float32)
+        img = np.reshape(frame, self.old_shape).astype(np.float32)
 
         # convert to 1 channel greyscale image by taking 29.9% of R channel + 58.7% G + 11.4% B
         img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
@@ -252,7 +264,7 @@ def make_env(game):
     env = ProcessFrame(env)
     env = ImageToPyTorch(env)
     env = BufferWrapper(env)
-    env = JoypadSpace(env, SIMPLE)
+    env = JoypadSpace(env, ACTION_SET)
 
     return env
 

@@ -41,10 +41,11 @@ def render_state(four_frames):
 
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
-training = False
-ncc = True
-pretrained = True
-no_eps = 5
+plot = False
+training = True
+pretrained = False
+ncc = False
+no_eps = 20000
 
 if ncc:
     path = "ncc_params/"
@@ -56,7 +57,7 @@ pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 if pretrained:
     with open(path + "episode_rewards.pkl", "rb") as f:
         episode_rewards = pickle.load(f)
-        print("Pretrained!")
+        print("Pretrained {} episodes from {}".format(len(episode_rewards), path + 'episode_rewards.pkl'))
 else:
     episode_rewards = []
 
@@ -73,7 +74,8 @@ agent = network.Agent(
     buffer_capacity=30000,
     batch_size=32,
     update_target=5000,
-    pretrained=pretrained
+    pretrained=pretrained,
+    path=path
 )
 
 print("\nStarting episodes...\n")
@@ -86,10 +88,11 @@ for ep in tqdm(range(no_eps)):
     while True:
         timestep += 1
 
-        env.render()
+        if plot:
+            env.render()
 
-        # if timestep % 10 == 0:
-        #     render_state(state)
+            if timestep % 10 == 0:
+                render_state(state)
 
         action = agent.step(state)
 
@@ -110,13 +113,18 @@ for ep in tqdm(range(no_eps)):
         if terminal:
             print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
                   .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
-            # plot_durations(episode_rewards)
+
+            if plot:
+                plot_durations(episode_rewards)
+
             break
 
     # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
     if training:
         episode_rewards.append(total_reward)
-        # plot_durations(episode_rewards)
+
+        if plot:
+            plot_durations(episode_rewards)
 
         if ep % math.floor(no_eps / 4) == 0:
             print("automatically saving prams at episode {}".format(ep))
