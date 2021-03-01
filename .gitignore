@@ -5,3 +5,6 @@ stage3/ncc_params/**
 stage3/params/**
 stage3/agent.zip
 stage3/env.py
+stage4/ncc_params4/**
+stage4/params4/**
+stage4/agent.zip

@@ -34,30 +34,30 @@ def render_state(four_frames):
     single_image = four_frames.squeeze(0)[-1]
     fig = plt.figure("Frame")
     plt.imshow(single_image)
-    plt.title("Down-sampled 84x84 grayscale image")
+    plt.title("Down-sampled image")
     plt.draw()
     plt.pause(0.001)
 
 
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
-plot = False
 training = True
-pretrained = False
 ncc = False
-no_eps = 20000
+plot = True
+pretrained = False
+no_eps = 1
 
 if ncc:
-    path = "ncc_params/"
+    path = "ncc_params4/"
 else:
-    path = "params/"
+    path = "params4/"
 
 pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 
 if pretrained:
     with open(path + "episode_rewards.pkl", "rb") as f:
         episode_rewards = pickle.load(f)
-        print("Pretrained {} episodes from {}".format(len(episode_rewards), path + 'episode_rewards.pkl'))
+        print("loaded {} episode rewards".format(len(episode_rewards)))
 else:
     episode_rewards = []
 
@@ -74,8 +74,7 @@ agent = network.Agent(
     buffer_capacity=30000,
     batch_size=32,
     update_target=5000,
-    pretrained=pretrained,
-    path=path
+    pretrained=pretrained
 )
 
 print("\nStarting episodes...\n")
@@ -98,15 +97,17 @@ for ep in tqdm(range(no_eps)):
 
         successor, reward, terminal, info = env.step(int(action[0]))
         total_reward += reward
-
         successor = torch.Tensor([successor])
-        reward = torch.Tensor([reward]).unsqueeze(0)
-        terminal = torch.Tensor([int(terminal)]).unsqueeze(0)
 
         if training:
-            experience = (state.float(), action.float(), reward.float(), successor.float(), terminal.float())
-            agent.memory.push(experience)
-            agent.train()
+            experience = (
+                state.float(),
+                action.float(),
+                torch.Tensor([reward]).unsqueeze(0).float(),
+                successor.float(),
+                torch.Tensor([int(terminal)]).unsqueeze(0).float()
+            )
+            agent.train(experience)
 
         state = successor
 
@@ -119,31 +120,34 @@ for ep in tqdm(range(no_eps)):
 
             break
 
-    # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
     if training:
         episode_rewards.append(total_reward)
 
         if plot:
             plot_durations(episode_rewards)
 
-        if ep % math.floor(no_eps / 4) == 0:
-            print("automatically saving prams at episode {}".format(ep))
+        if ep % max(1.0, math.floor(no_eps / 4)) == 0:
+            print("automatically saving params4 at episode {}".format(ep))
 
             with open(path + "episode_rewards.pkl", "wb") as f:
                 pickle.dump(episode_rewards, f)
+                print("   saved rewards to: {}".format(path + "episode_rewards.pkl"))
 
             with open(path + "buffer.pkl", "wb") as f:
-                pickle.dump(agent.memory.buffer, f)
+                pickle.dump(agent.memory.tree, f)
+                print("   saved memory tree to: {}".format(path + "buffer.pkl"))
 
             torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
             torch.save(agent.target_network.state_dict(), path + "target_network.pt")
+            print("   saved policy network to: {}".format(path + "policy_network.pt"))
+            print("   saved target network to: {}".format(path + "target_network.pt"))
 
 if training:
     with open(path + "episode_rewards.pkl", "wb") as f:
         pickle.dump(episode_rewards, f)
 
     with open(path + "buffer.pkl", "wb") as f:
-        pickle.dump(agent.memory.buffer, f)
+        pickle.dump(agent.memory.tree, f)
 
     torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
     torch.save(agent.target_network.state_dict(), path + "target_network.pt")

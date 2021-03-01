@@ -27,6 +27,7 @@ SIMPLE = [
     ['right', 'B'],
     ['right', 'A', 'B'],
     ['A'],
+    ['A', 'B'],
     ['left']
 ]
 
