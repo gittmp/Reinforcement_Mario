@@ -5,8 +5,8 @@ from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
 
-import network
-from environment import *
+from network import Agent
+from environment import make_env
 
 
 # plot function which plots durations the figure during training.
@@ -41,16 +41,16 @@ def render_state(four_frames):
 
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
-training = False
-plot = True
-pretrained = True
-ncc = True
-no_eps = 200
+training = True
+plot = False
+pretrained = False
+ncc = False
+no_eps = 10000
 
 if ncc:
-    path = "ncc_params/"
+    path = "ncc_params3/"
 else:
-    path = "params/"
+    path = "params3/"
 
 pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 
@@ -63,7 +63,7 @@ else:
 
 env.reset()
 
-agent = network.Agent(
+agent = Agent(
     state_shape=env.observation_space.shape,
     action_n=env.action_space.n,
     alpha=0.00025,
@@ -91,8 +91,8 @@ for ep in tqdm(range(no_eps)):
         if plot:
             env.render()
 
-            if timestep % 10 == 0:
-                render_state(state)
+            # if timestep % 10 == 0:
+            #     render_state(state)
 
         action = agent.step(state)
 
@@ -116,7 +116,6 @@ for ep in tqdm(range(no_eps)):
 
             if plot:
                 plot_durations(episode_rewards)
-
             break
 
     if training:

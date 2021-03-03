@@ -257,8 +257,8 @@ class Agent:
 
         self.optimiser.zero_grad()
 
-        q_vals = self.policy_network(states).gather(1, actions.long())
-        targets = rewards + torch.mul((self.gamma * self.target_network(successors).max(1).values.unsqueeze(1)), 1 - terminals)
+        q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
+        targets = (rewards + torch.mul((self.gamma * self.target_network(successors).max(1).values.unsqueeze(1)), 1 - terminals)).to(self.device)
 
         abs_errors = torch.abs(targets - q_vals)
         self.memory.update(indices, abs_errors)

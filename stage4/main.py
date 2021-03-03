@@ -1,11 +1,11 @@
 import os
 import math
+import torch
 from tqdm import tqdm
 import pickle
 
 from network import Agent
-from environment import *
-
+from environment import make_env, plot_durations, render_state
 
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
@@ -13,7 +13,7 @@ training = True
 ncc = False
 plot = False
 pretrained = False
-no_eps = 100
+no_eps = 10000
 
 if ncc:
     path = "ncc_params4/"
@@ -58,8 +58,8 @@ for ep in tqdm(range(no_eps)):
         if plot:
             env.render()
 
-            if timestep % 10 == 0:
-                render_state(state)
+            # if timestep % 10 == 0:
+            #     render_state(state)
 
         action = agent.step(state)
 
