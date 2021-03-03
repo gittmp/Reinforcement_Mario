@@ -45,7 +45,7 @@ class BinarySumTree(object):
         self.full = False
 
         # generate tree with all node values 0 (maxlen nodes, each with 2 children, minus root)
-        self.tree = np.zeros(2 * maxlen - 1)
+        self.tree = torch.zeros(2 * maxlen - 1)
 
     def add(self, priority, data):
         # update data buffer
@@ -71,6 +71,8 @@ class BinarySumTree(object):
         while i != 0:
             # need to update priority scores of internal nodes above updated leaf (as these sums depend on it)
             i = (i - 1) // 2
+            # ISSUE with shape:
+            # i = 50485; p = tensor([0.1148], grad_fn=<PowBackward0>); tree[i] = 2.0; diff = tensor([-0.8852], grad_fn=<SubBackward0>);
             self.tree[i] += diff
 
     def get_leaf(self, val):
@@ -112,10 +114,10 @@ class PrioritisedMemory:
         if self.pretrained:
             with open(path + "buffer.pkl", "rb") as f:
                 self.tree = pickle.load(f)
-            print("Loaded memory tree from {}".format(path))
+            print("Loaded memory tree from path = {}".format(path + "buffer.pkl"))
         else:
             self.tree = BinarySumTree()
-            print("Created new memory tree")
+            print("Generated new memory tree")
 
     def size(self):
         if self.tree.full:
@@ -125,7 +127,7 @@ class PrioritisedMemory:
 
     def push(self, experience):
         # retrieve the max priority
-        maximum = np.max(self.tree.tree[-self.tree.maxlen:])
+        maximum = torch.max(self.tree.tree[-self.tree.maxlen:])
 
         if maximum == 0:
             maximum = self.error_limit
@@ -134,14 +136,14 @@ class PrioritisedMemory:
 
     def sample(self):
         batch = []
-        indices = np.empty((self.batch_size, ), dtype=np.int32)
-        weights = np.empty((self.batch_size, 1), dtype=np.float32)
+        indices = torch.empty(self.batch_size, )
+        weights = torch.empty(self.batch_size, 1)
 
         # increment beta each time we sample, annealing towards 1
         self.beta = min(1.0, self.beta + self.beta_increment)
 
         # calculate maximum weight
-        min_priority = np.min(self.tree.tree[-self.tree.maxlen:]) / self.tree.total_priority()
+        min_priority = torch.min(self.tree.tree[-self.tree.maxlen:]) / self.tree.total_priority()
         max_weight = pow(min_priority * self.batch_size, -self.beta)
 
         # divide range into sections
@@ -185,12 +187,10 @@ class PrioritisedMemory:
         return indices, batch, weights
 
     def update(self, indices, errors):
-        errors += self.epsilon
-        priorities = np.minimum(errors.detach().numpy(), self.error_limit)
-        priorities = np.power(priorities, self.alpha)
-
-        for index, priority in zip(indices, priorities):
-            self.tree.update(index, priority)
+        for index, error in zip(indices, errors):
+            error = min(float(error + self.epsilon), self.error_limit)
+            priority = pow(error, self.alpha)
+            self.tree.update(int(index), priority)
 
 
 class Agent:
@@ -221,6 +221,10 @@ class Agent:
         if self.pretrained:
             self.policy_network.load_state_dict(torch.load(path + "policy_network.pt", map_location=torch.device(self.device)))
             self.policy_network.load_state_dict(torch.load(path + "target_network.pt", map_location=torch.device(self.device)))
+            print("Loaded policy network from path = {}".format(path + "policy_network.pt"))
+            print("Loaded target network from path = {}".format(path + "target_network.pt"))
+        else:
+            print("Generated randomly initiated new networks")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
         self.memory = PrioritisedMemory(self.state_shape, self.device, self.pretrained, path, self.batch_size)
@@ -259,7 +263,7 @@ class Agent:
         abs_errors = torch.abs(targets - q_vals)
         self.memory.update(indices, abs_errors)
 
-        loss = (torch.tensor(weights) * self.loss(q_vals, targets)).mean()
+        loss = (weights * self.loss(q_vals, targets)).mean()
         loss.backward()
         self.optimiser.step()
 

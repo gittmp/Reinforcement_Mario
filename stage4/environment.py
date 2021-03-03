@@ -5,6 +5,8 @@ from nes_py.wrappers import JoypadSpace  # converting actions to correct JoyPad 
 from collections import deque  # for deque: insert(e_new) -> [e_new, e_0, ..., e_l-2] -> exit(e_l-1)
 import gym
 import cv2  # util for image manipulation
+import matplotlib.pyplot as plt
+import torch
 
 
 # Limiting action set combinations:
@@ -58,6 +60,36 @@ ACTION_SET = [
     ['left'],
     ['left', 'A']
 ]
+
+
+# plot function which plots durations the figure during training.
+def plot_durations(ep_rewards):
+    plt.figure(2)
+    plt.clf()
+    rewards = torch.tensor(ep_rewards, dtype=torch.float)
+    plt.title('Training')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.plot(rewards.numpy())
+
+    # plot 100 means of episodes
+    if len(rewards) >= 100:
+        means = rewards.unfold(0, 100, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(99), means))
+        plt.plot(means.numpy())
+
+    # update plots
+    plt.pause(0.001)
+
+
+# plot function to visualise downsampled slice of screen
+def render_state(four_frames):
+    single_image = four_frames.squeeze(0)[-1]
+    fig = plt.figure("Frame")
+    plt.imshow(single_image)
+    plt.title("Down-sampled image")
+    plt.draw()
+    plt.pause(0.001)
 
 
 # CLASSES / FUNCTIONS FOR WRAPPING ENVIRONMENT TO IMPROVE PERFORMANCE

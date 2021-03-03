@@ -41,11 +41,11 @@ def render_state(four_frames):
 
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
-plot = False
-training = True
-pretrained = False
-ncc = False
-no_eps = 20000
+training = False
+plot = True
+pretrained = True
+ncc = True
+no_eps = 200
 
 if ncc:
     path = "ncc_params/"
@@ -57,7 +57,7 @@ pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 if pretrained:
     with open(path + "episode_rewards.pkl", "rb") as f:
         episode_rewards = pickle.load(f)
-        print("Pretrained {} episodes from {}".format(len(episode_rewards), path + 'episode_rewards.pkl'))
+        print("Loaded rewards over {} episodes from path = {}".format(len(episode_rewards), path + 'episode_rewards.pkl'))
 else:
     episode_rewards = []
 
@@ -82,7 +82,7 @@ print("\nStarting episodes...\n")
 for ep in tqdm(range(no_eps)):
     state = env.reset()
     state = torch.Tensor([state])
-    total_reward = 0
+    # total_reward = 0
     timestep = 0
 
     while True:
@@ -97,7 +97,7 @@ for ep in tqdm(range(no_eps)):
         action = agent.step(state)
 
         successor, reward, terminal, info = env.step(int(action[0]))
-        total_reward += reward
+        # total_reward += reward
 
         successor = torch.Tensor([successor])
         reward = torch.Tensor([reward]).unsqueeze(0)
@@ -111,17 +111,18 @@ for ep in tqdm(range(no_eps)):
         state = successor
 
         if terminal:
-            print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
-                  .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
+            # print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
+            #       .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
 
             if plot:
                 plot_durations(episode_rewards)
 
             break
 
-    # print("\nTotal reward after episode {} is {}".format(ep + 1, total_reward))
     if training:
-        episode_rewards.append(total_reward)
+        # episode_rewards.append(total_reward)
+        episode_rewards.append(info['score'])
+        print("Game score after termination = {}".format(info['score']))
 
         if plot:
             plot_durations(episode_rewards)

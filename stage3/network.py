@@ -48,9 +48,11 @@ class Memory:
             with open(path + "buffer.pkl", "rb") as f:
                 self.buffer = pickle.load(f)
             self.buffer_capacity = self.buffer.maxlen
+            print("Loaded buffer from path = {}".format(path + "buffer.pkl"))
         else:
             self.buffer = collections.deque(maxlen=buffer_capacity)
             self.buffer_capacity = buffer_capacity
+            print("Generated new buffer")
 
     def push(self, experience):
         self.buffer.append(experience)
@@ -107,7 +109,10 @@ class Agent:
         if self.pretrained:
             self.policy_network.load_state_dict(torch.load(path + "policy_network.pt", map_location=torch.device(self.device)))
             self.policy_network.load_state_dict(torch.load(path + "target_network.pt", map_location=torch.device(self.device)))
-            print("Loaded networks from {}".format(path))
+            print("Loaded policy network from path = {}".format(path + "policy_network.pt"))
+            print("Loaded target network from path = {}".format(path + "target_network.pt"))
+        else:
+            print("Generated randomly initiated new networks")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
