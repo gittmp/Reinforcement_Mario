@@ -13,7 +13,7 @@ training = True
 ncc = False
 plot = False
 pretrained = False
-no_eps = 10000
+no_eps = 25
 
 if ncc:
     path = "ncc_params4/"
@@ -102,8 +102,8 @@ for ep in tqdm(range(no_eps)):
             with open(path + "episode_rewards.pkl", "wb") as f:
                 pickle.dump(episode_rewards, f)
 
-            with open(path + "buffer.pkl", "wb") as f:
-                pickle.dump(agent.memory.tree, f)
+            # with open(path + "buffer.pkl", "wb") as f:
+            #     pickle.dump(agent.memory.tree, f)
 
             torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
             torch.save(agent.target_network.state_dict(), path + "target_network.pt")
@@ -112,8 +112,8 @@ if training:
     with open(path + "episode_rewards.pkl", "wb") as f:
         pickle.dump(episode_rewards, f)
 
-    with open(path + "buffer.pkl", "wb") as f:
-        pickle.dump(agent.memory.tree, f)
+    # with open(path + "buffer.pkl", "wb") as f:
+    #     pickle.dump(agent.memory.tree, f)
 
     torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
     torch.save(agent.target_network.state_dict(), path + "target_network.pt")

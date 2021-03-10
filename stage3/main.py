@@ -45,7 +45,7 @@ training = True
 plot = False
 pretrained = False
 ncc = False
-no_eps = 10000
+no_eps = 50
 
 if ncc:
     path = "ncc_params3/"
@@ -121,7 +121,7 @@ for ep in tqdm(range(no_eps)):
     if training:
         # episode_rewards.append(total_reward)
         episode_rewards.append(info['score'])
-        print("Game score after termination = {}".format(info['score']))
+        print("\nGame score after termination = {}".format(info['score']))
 
         if plot:
             plot_durations(episode_rewards)

@@ -1,11 +1,6 @@
 gym-super-mario-bros
-os
 torch
 tqdm
-pickle
-matplotlib.pyplot
+matplotlib
 numpy
-torch.nn
-random
-collections
-cv2
+opencv-python

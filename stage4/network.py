@@ -71,8 +71,6 @@ class BinarySumTree(object):
         while i != 0:
             # need to update priority scores of internal nodes above updated leaf (as these sums depend on it)
             i = (i - 1) // 2
-            # ISSUE with shape:
-            # i = 50485; p = tensor([0.1148], grad_fn=<PowBackward0>); tree[i] = 2.0; diff = tensor([-0.8852], grad_fn=<SubBackward0>);
             self.tree[i] += diff
 
     def get_leaf(self, val):
@@ -143,7 +141,12 @@ class PrioritisedMemory:
         self.beta = min(1.0, self.beta + self.beta_increment)
 
         # calculate maximum weight
-        min_priority = torch.min(self.tree.tree[-self.tree.maxlen:]) / self.tree.total_priority()
+        # torch.min(self.tree.tree[-self.tree.maxlen:]) = 0.0
+        print("   tree = {}".format(self.tree.tree))
+        # print("   min tree element = {}".format(float(torch.min(self.tree.tree[-self.tree.maxlen:]))))
+
+        min_priority = max(float(torch.min(self.tree.tree[-self.tree.maxlen:])), self.epsilon) / self.tree.total_priority()
+
         max_weight = pow(min_priority * self.batch_size, -self.beta)
 
         # divide range into sections
@@ -156,7 +159,12 @@ class PrioritisedMemory:
             index, priority, transition = self.tree.get_leaf(np.random.uniform(low, high))
 
             p_j = priority / self.tree.total_priority()
-            weights[i, 0] = pow(p_j * self.batch_size, -self.beta) / max_weight
+
+            # w = (1 / N*p_j)^B -> normalise to [0, 1]
+            update = pow(self.batch_size * p_j, -self.beta) / max_weight
+
+            weights[i, 0] = update
+
             indices[i] = index
             batch.append([transition])
 
@@ -184,10 +192,11 @@ class PrioritisedMemory:
             'terminals': terminal_batch.to(self.device)
         }
 
-        return indices, batch, weights
+        return indices.to(self.device), batch, weights.to(self.device)
 
     def update(self, indices, errors):
         for index, error in zip(indices, errors):
+            print("   error = {}, max = {}".format(error, self.error_limit))
             error = min(float(error + self.epsilon), self.error_limit)
             priority = pow(error, self.alpha)
             self.tree.update(int(index), priority)
@@ -245,30 +254,39 @@ class Agent:
         self.memory.push(exp)
 
         if self.memory.size() < self.batch_size * 100:
+            # print("Skipping training, mem size = {}".format(self.memory.size()))
             return
 
-        # states, actions, rewards, successors, terminals = self.memory.sample()
+        # sample from memory
+        # print("sampling from memory, mem size = {}".format(self.memory.size()))
         indices, batch, weights = self.memory.sample()
         states = batch['states']
         actions = batch['actions']
         rewards = batch['rewards']
         successors = batch['successors']
         terminals = batch['terminals']
+        # print("   indices ({}) = {}".format(indices.size(), indices))
+        # print("   weights ({}) = {}".format(weights.size(), weights))
 
         self.optimiser.zero_grad()
 
-        q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
+        # TD target = reward + discount factor * successor q-value
         targets = (rewards + torch.mul((self.gamma * self.target_network(successors).max(1).values.unsqueeze(1)), 1 - terminals)).to(self.device)
+        # print("    TD targets ({}) = {}".format(targets.size(), targets))
 
+        # TD error = TD target - prev. q-value
+        q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
         abs_errors = torch.abs(targets - q_vals)
+        # print("    TD errors ({}) = {}".format(abs_errors.size(), abs_errors))
+
         self.memory.update(indices, abs_errors)
 
         loss = (weights * self.loss(q_vals, targets)).mean()
+        # print("    Loss = {}".format(loss))
         loss.backward()
         self.optimiser.step()
-
-        self.epsilon *= self.epsilon_decay
-        self.epsilon = max(self.epsilon, self.epsilon_floor)
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
 
         if self.timestep % self.update_target == 0:
+            print("updating target")
             self.target_update()
