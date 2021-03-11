@@ -4,6 +4,7 @@ import pickle
 import torch.nn as nn
 import random
 import math
+from collections import deque
 
 
 class Network(nn.Module):
@@ -40,61 +41,40 @@ class BinarySumTree(object):
     def __init__(self, maxlen=100000):
         # specify the max number of leaves holding priorities, and buffer holding experiences
         self.maxlen = maxlen
-        self.buffer = np.zeros(maxlen, dtype=object)
-        self.pointer = 0
-        self.full = False
+        self.buffer = deque(maxlen=maxlen)
+        self.tree = deque(maxlen=maxlen)
 
-        # generate tree with all node values 0 (maxlen nodes, each with 2 children, minus root)
-        self.tree = torch.zeros(2 * maxlen - 1)
+    def add(self, error, data):
+        self.buffer.append(data)
+        self.tree.append(error)
 
-    def add(self, priority, data):
-        # update data buffer
-        self.buffer[self.pointer] = data
-
-        # update tree leaves L -> R
-        # fill leaves L -> R
-        index = self.pointer + self.maxlen - 1
-        self.update(index, priority)
-        self.pointer += 1
-
-        # if buffer is full, overwrite L -> R
-        if self.pointer >= self.maxlen:
-            self.full = True
-            self.pointer = 0
-
-    def update(self, i, p):
-        # determine difference between old and new priority, then update
-        diff = p - self.tree[i]
-        self.tree[i] = p
-
-        # backpropagate updates
-        while i != 0:
-            # need to update priority scores of internal nodes above updated leaf (as these sums depend on it)
-            i = (i - 1) // 2
-            self.tree[i] += diff
+    def update(self, i, e):
+        self.tree[i] = e
 
     def get_leaf(self, val):
-        # output: leaf index, priority value, corresponding transition
-        node = 0
-        left = 1
-        right = 2
+        # retrieve random priority error in range low-high
+        err = min([e for e in self.tree if e >= val])
+        node = self.tree.index(err)
+        trans = self.buffer[node]
 
-        while left < len(self.tree):
-            # search down the tree to find the highest priority node
-            if val <= self.tree[left]:
-                node = left
-            else:
-                val -= self.tree[left]
-                node = right
+        return node, float(err), trans
 
-            left = 2 * node + 1
-            right = node + 1
+    def max_priority(self, lim=1.0):
+        if len(self.tree) > 0:
+            m = max(self.tree)
 
-        return node, self.tree[node], self.buffer[node - self.maxlen + 1]
+            if m == 0:
+                m = lim
+        else:
+            m = lim
+
+        return float(m)
+
+    def size(self):
+        return len(self.tree)
 
     def total_priority(self):
-        # return root node, i.e. sum of priorities
-        return self.tree[0]
+        return sum(self.tree)
 
 
 class PrioritisedMemory:
@@ -118,18 +98,11 @@ class PrioritisedMemory:
             print("Generated new memory tree")
 
     def size(self):
-        if self.tree.full:
-            return self.tree.maxlen
-        else:
-            return self.tree.pointer
+        return len(self.tree.tree)
 
     def push(self, experience):
         # retrieve the max priority
-        maximum = torch.max(self.tree.tree[-self.tree.maxlen:])
-
-        if maximum == 0:
-            maximum = self.error_limit
-
+        maximum = self.tree.max_priority(self.error_limit)
         self.tree.add(maximum, experience)
 
     def sample(self):
@@ -142,31 +115,42 @@ class PrioritisedMemory:
 
         # calculate maximum weight
         # torch.min(self.tree.tree[-self.tree.maxlen:]) = 0.0
-        print("   tree = {}".format(self.tree.tree))
-        # print("   min tree element = {}".format(float(torch.min(self.tree.tree[-self.tree.maxlen:]))))
-
-        min_priority = max(float(torch.min(self.tree.tree[-self.tree.maxlen:])), self.epsilon) / self.tree.total_priority()
-
-        max_weight = pow(min_priority * self.batch_size, -self.beta)
+        priorities = []
 
         # divide range into sections
-        section = math.floor(self.tree.total_priority() / self.batch_size)
+        section = self.tree.max_priority() / self.batch_size
 
         # uniformly sample transitions from each section
         for i in range(self.batch_size):
             low = section * i
             high = section * (i + 1)
-            index, priority, transition = self.tree.get_leaf(np.random.uniform(low, high))
+            v = np.random.uniform(low, high)
+            index, error, transition = self.tree.get_leaf(v)
 
-            p_j = priority / self.tree.total_priority()
-
-            # w = (1 / N*p_j)^B -> normalise to [0, 1]
-            update = pow(self.batch_size * p_j, -self.beta) / max_weight
-
-            weights[i, 0] = update
+            p_i = float(error) + self.epsilon
+            p_i_a = pow(p_i, self.alpha)
+            priorities.append(p_i_a)
 
             indices[i] = index
             batch.append([transition])
+
+        total_priority = sum(priorities)
+        N = self.tree.size()
+        min_p = min(priorities) / total_priority
+        max_w = pow((1/N) * (1/min_p), self.beta)
+        print("PRIORITY RANGE = [{:.4f}, {:.4f}]".format(min_p, max(priorities) / total_priority))
+        print("MAX WEIGHT = {}".format(max_w))
+        max_w = 0
+
+        for i in range(self.batch_size):
+            # w = (1 / N*p_i)^B -> normalise to [0, 1]
+            P_i = priorities[i] / total_priority
+            w_i = pow((1/N) * (1/P_i), self.beta)
+            # w_i = w_i / max_w
+            max_w = max(max_w, w_i)
+            weights[i, 0] = w_i
+
+            # print("   priority = {}, weight = {}".format(P_i, w_i))
 
         # convert batch to torch
         state_batch = torch.zeros(self.batch_size, *self.state_shape)
@@ -196,10 +180,9 @@ class PrioritisedMemory:
 
     def update(self, indices, errors):
         for index, error in zip(indices, errors):
-            print("   error = {}, max = {}".format(error, self.error_limit))
-            error = min(float(error + self.epsilon), self.error_limit)
-            priority = pow(error, self.alpha)
-            self.tree.update(int(index), priority)
+            # error = float(error + self.epsilon)
+            # priority = pow(error, self.alpha)
+            self.tree.update(int(index), error)
 
 
 class Agent:
@@ -265,24 +248,19 @@ class Agent:
         rewards = batch['rewards']
         successors = batch['successors']
         terminals = batch['terminals']
-        # print("   indices ({}) = {}".format(indices.size(), indices))
-        # print("   weights ({}) = {}".format(weights.size(), weights))
 
         self.optimiser.zero_grad()
 
         # TD target = reward + discount factor * successor q-value
         targets = (rewards + torch.mul((self.gamma * self.target_network(successors).max(1).values.unsqueeze(1)), 1 - terminals)).to(self.device)
-        # print("    TD targets ({}) = {}".format(targets.size(), targets))
 
         # TD error = TD target - prev. q-value
         q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
         abs_errors = torch.abs(targets - q_vals)
-        # print("    TD errors ({}) = {}".format(abs_errors.size(), abs_errors))
 
         self.memory.update(indices, abs_errors)
 
         loss = (weights * self.loss(q_vals, targets)).mean()
-        # print("    Loss = {}".format(loss))
         loss.backward()
         self.optimiser.step()
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)

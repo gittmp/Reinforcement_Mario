@@ -83,8 +83,8 @@ for ep in tqdm(range(no_eps)):
             # print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
             #       .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
 
-            if plot:
-                plot_durations(episode_rewards)
+            # if plot:
+            #     plot_durations(episode_rewards)
 
             break
 
@@ -92,9 +92,6 @@ for ep in tqdm(range(no_eps)):
         # episode_rewards.append(total_reward)
         episode_rewards.append(info['score'])
         print("Game score after termination = {}".format(info['score']))
-
-        if plot:
-            plot_durations(episode_rewards)
 
         if ep % max(1.0, math.floor(no_eps / 4)) == 0:
             print("automatically saving params4 at episode {}".format(ep))
