@@ -91,7 +91,7 @@ for ep in tqdm(range(no_eps)):
     if training:
         # episode_rewards.append(total_reward)
         episode_rewards.append(info['score'])
-        print("Game score after termination = {}".format(info['score']))
+        print("\nGame score after termination = {}".format(info['score']))
 
         if ep % max(1.0, math.floor(no_eps / 4)) == 0:
             print("automatically saving params4 at episode {}".format(ep))

@@ -68,7 +68,7 @@ class BinarySumTree(object):
         else:
             m = lim
 
-        return float(m)
+        return m
 
     def size(self):
         return len(self.tree)
@@ -113,44 +113,38 @@ class PrioritisedMemory:
         # increment beta each time we sample, annealing towards 1
         self.beta = min(1.0, self.beta + self.beta_increment)
 
-        # calculate maximum weight
-        # torch.min(self.tree.tree[-self.tree.maxlen:]) = 0.0
+        # uniformly sample transitions from each priority section
         priorities = []
+        section_length = self.tree.max_priority() / self.batch_size
+        N = self.tree.size()
 
-        # divide range into sections
-        section = self.tree.max_priority() / self.batch_size
-
-        # uniformly sample transitions from each section
         for i in range(self.batch_size):
-            low = section * i
-            high = section * (i + 1)
-            v = np.random.uniform(low, high)
-            index, error, transition = self.tree.get_leaf(v)
+            low = i * section_length
+            section = [(j, self.tree.tree[j], self.tree.buffer[j]) for j in range(N) if low <= self.tree.tree[j]]
+            section_index = int(np.random.randint(0, len(section)))
+
+            index = section[section_index][0]
+            error = section[section_index][1]
+            transition = section[section_index][2]
 
             p_i = float(error) + self.epsilon
             p_i_a = pow(p_i, self.alpha)
-            priorities.append(p_i_a)
 
+            priorities.append(p_i_a)
             indices[i] = index
             batch.append([transition])
 
         total_priority = sum(priorities)
-        N = self.tree.size()
-        min_p = min(priorities) / total_priority
-        max_w = pow((1/N) * (1/min_p), self.beta)
-        print("PRIORITY RANGE = [{:.4f}, {:.4f}]".format(min_p, max(priorities) / total_priority))
-        print("MAX WEIGHT = {}".format(max_w))
-        max_w = 0
+        # min_p = min(priorities) / total_priority
+        # max_w = pow((1/N) * (1/min_p), self.beta)
 
         for i in range(self.batch_size):
             # w = (1 / N*p_i)^B -> normalise to [0, 1]
             P_i = priorities[i] / total_priority
             w_i = pow((1/N) * (1/P_i), self.beta)
             # w_i = w_i / max_w
-            max_w = max(max_w, w_i)
             weights[i, 0] = w_i
-
-            # print("   priority = {}, weight = {}".format(P_i, w_i))
+            # print("P_i = {}; w_i = {};".format(P_i, w_i))
 
         # convert batch to torch
         state_batch = torch.zeros(self.batch_size, *self.state_shape)
@@ -180,8 +174,6 @@ class PrioritisedMemory:
 
     def update(self, indices, errors):
         for index, error in zip(indices, errors):
-            # error = float(error + self.epsilon)
-            # priority = pow(error, self.alpha)
             self.tree.update(int(index), error)
 
 
@@ -237,11 +229,9 @@ class Agent:
         self.memory.push(exp)
 
         if self.memory.size() < self.batch_size * 100:
-            # print("Skipping training, mem size = {}".format(self.memory.size()))
             return
 
         # sample from memory
-        # print("sampling from memory, mem size = {}".format(self.memory.size()))
         indices, batch, weights = self.memory.sample()
         states = batch['states']
         actions = batch['actions']
@@ -257,10 +247,13 @@ class Agent:
         # TD error = TD target - prev. q-value
         q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
         abs_errors = torch.abs(targets - q_vals)
-
         self.memory.update(indices, abs_errors)
+        # print("New error terms: i = {} \ne = {}".format(indices, abs_errors))
 
-        loss = (weights * self.loss(q_vals, targets)).mean()
+        td_loss = self.loss(q_vals, targets)
+        # print("Weighted loss: w = {} \nl = {}".format(weights, td_loss))
+
+        loss = (weights * td_loss).mean()
         loss.backward()
         self.optimiser.step()
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
