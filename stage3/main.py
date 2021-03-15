@@ -41,10 +41,10 @@ def render_state(four_frames):
 
 game = 'SuperMarioBros-1-1-v0'
 env = make_env(game)
-training = True
-plot = False
-pretrained = False
-ncc = False
+training = False
+plot = True
+pretrained = True
+ncc = True
 no_eps = 50
 
 if ncc:
