@@ -40,6 +40,7 @@ class Network(nn.Module):
 class BinarySumTree(object):
     def __init__(self, maxlen=100000):
         # specify the max number of leaves holding priorities, and buffer holding experiences
+        self.error_limit = 1.0
         self.maxlen = maxlen
         self.buffer = deque(maxlen=maxlen)
         self.tree = deque(maxlen=maxlen)
@@ -51,22 +52,29 @@ class BinarySumTree(object):
     def update(self, i, e):
         self.tree[i] = e
 
-    def get_leaf(self, val):
+    def get_leaf(self, l, h):
         # retrieve random priority error in range low-high
-        err = min([e for e in self.tree if e >= val])
-        node = self.tree.index(err)
+        val = np.random.uniform(l, h)
+        err = 0
+        R = len(self.tree)
+
+        for i in range(R):
+            if err < self.tree[i] < val:
+                err = self.tree[i]
+                node = i
+
         trans = self.buffer[node]
 
         return node, float(err), trans
 
-    def max_priority(self, lim=1.0):
+    def max_priority(self):
         if len(self.tree) > 0:
             m = max(self.tree)
 
             if m == 0:
-                m = lim
+                m = self.error_limit
         else:
-            m = lim
+            m = self.error_limit
 
         return m
 
@@ -102,7 +110,7 @@ class PrioritisedMemory:
 
     def push(self, experience):
         # retrieve the max priority
-        maximum = self.tree.max_priority(self.error_limit)
+        maximum = self.tree.max_priority()
         self.tree.add(maximum, experience)
 
     def sample(self):
@@ -117,15 +125,11 @@ class PrioritisedMemory:
         priorities = []
         section_length = self.tree.max_priority() / self.batch_size
         N = self.tree.size()
+        low = 0
 
         for i in range(self.batch_size):
-            low = i * section_length
-            section = [(j, self.tree.tree[j], self.tree.buffer[j]) for j in range(N) if low <= self.tree.tree[j]]
-            section_index = int(np.random.randint(0, len(section)))
-
-            index = section[section_index][0]
-            error = section[section_index][1]
-            transition = section[section_index][2]
+            high = (i + 1) * section_length
+            index, error, transition = self.tree.get_leaf(low, high)
 
             p_i = float(error) + self.epsilon
             p_i_a = pow(p_i, self.alpha)
@@ -144,7 +148,6 @@ class PrioritisedMemory:
             w_i = pow((1/N) * (1/P_i), self.beta)
             # w_i = w_i / max_w
             weights[i, 0] = w_i
-            # print("P_i = {}; w_i = {};".format(P_i, w_i))
 
         # convert batch to torch
         state_batch = torch.zeros(self.batch_size, *self.state_shape)
@@ -226,7 +229,6 @@ class Agent:
         self.target_network.load_state_dict(self.policy_network.state_dict())
 
     def train(self, exp):
-        self.memory.push(exp)
 
         if self.memory.size() < self.batch_size * 100:
             return
@@ -248,15 +250,16 @@ class Agent:
         q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
         abs_errors = torch.abs(targets - q_vals)
         self.memory.update(indices, abs_errors)
-        # print("New error terms: i = {} \ne = {}".format(indices, abs_errors))
 
         td_loss = self.loss(q_vals, targets)
-        # print("Weighted loss: w = {} \nl = {}".format(weights, td_loss))
 
         loss = (weights * td_loss).mean()
         loss.backward()
         self.optimiser.step()
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
+
+        # append experience to memory AFTER update so that indices in deque are the same
+        self.memory.push(exp)
 
         if self.timestep % self.update_target == 0:
             print("updating target")
