@@ -4,7 +4,19 @@ import pickle
 import torch.nn as nn
 import random
 import math
+import os
 from collections import deque
+from tqdm import tqdm
+# from environment import plot_durations
+
+
+def check_files(path):
+    b = os.path.isfile(path + "policy_network.pt")
+    b = b and os.path.isfile(path + "target_network.pt")
+    b = b and os.path.isfile(path + "buffer.pkl")
+    b = b and os.path.isfile(path + "episode_rewards.pkl")
+
+    return b
 
 
 class Network(nn.Module):
@@ -86,7 +98,7 @@ class BinarySumTree(object):
 
 
 class PrioritisedMemory:
-    def __init__(self, shape, device, pretrained=False, path=None, batch=32):
+    def __init__(self, shape, device, eps, batch=32, pretrained=False, path=None):
         self.epsilon = 0.02
         self.alpha = 0.6
         self.beta = 0.4
@@ -94,16 +106,22 @@ class PrioritisedMemory:
         self.error_limit = 1.0
         self.batch_size = batch
         self.state_shape = shape
+        self.n_eps = eps
         self.device = device
         self.pretrained = pretrained
+        self.path = path
 
         if self.pretrained:
-            with open(path + "buffer.pkl", "rb") as f:
+            with open(self.path + "buffer.pkl", "rb") as f:
                 self.tree = pickle.load(f)
-            print("Loaded memory tree from path = {}".format(path + "buffer.pkl"))
+
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("Loaded memory tree from path = {}".format(self.path + "buffer.pkl"))
         else:
             self.tree = BinarySumTree()
-            print("Generated new memory tree")
+
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("Generated new memory tree")
 
     def size(self):
         return len(self.tree.tree)
@@ -183,7 +201,8 @@ class PrioritisedMemory:
 class Agent:
     def __init__(self, state_shape, action_n,
                  alpha, gamma, epsilon_ceil, epsilon_floor, epsilon_decay,
-                 buffer_capacity, batch_size, update_target, pretrained, path=None):
+                 buffer_capacity, batch_size, update_target, eps,
+                 pretrained=False, path=None, plot=False, training=False):
 
         self.state_shape = state_shape
         self.action_n = action_n
@@ -194,11 +213,16 @@ class Agent:
         self.epsilon_floor = epsilon_floor
         self.epsilon_decay = epsilon_decay
         self.update_target = update_target
-        self.pretrained = pretrained
+        self.pretrained = pretrained and check_files(path)
         self.memory_capacity = buffer_capacity
         self.batch_size = batch_size
 
-        self.timestep = 0
+        self.n_eps = eps
+        self.path = path
+        self.plot = plot
+        self.training = training
+
+        self.train_step = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.loss = nn.SmoothL1Loss().to(self.device)
 
@@ -206,18 +230,29 @@ class Agent:
         self.target_network = Network(state_shape, action_n).to(self.device)
 
         if self.pretrained:
-            self.policy_network.load_state_dict(torch.load(path + "policy_network.pt", map_location=torch.device(self.device)))
-            self.policy_network.load_state_dict(torch.load(path + "target_network.pt", map_location=torch.device(self.device)))
-            print("Loaded policy network from path = {}".format(path + "policy_network.pt"))
-            print("Loaded target network from path = {}".format(path + "target_network.pt"))
+            self.policy_network.load_state_dict(torch.load(self.path + "policy_network.pt", map_location=torch.device(self.device)))
+            self.policy_network.load_state_dict(torch.load(self.path + "target_network.pt", map_location=torch.device(self.device)))
+
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("Loaded policy network from path = {}".format(self.path + "policy_network.pt"))
+                f.write("Loaded target network from path = {}".format(self.path + "target_network.pt"))
+
+            with open(self.path + "episode_rewards.pkl", "rb") as f:
+                self.episode_rewards = pickle.load(f)
+
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("Loaded rewards over {} episodes from path = {}".format(len(self.episode_rewards), path))
         else:
-            print("Generated randomly initiated new networks")
+            self.episode_rewards = []
+
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("Generated randomly initiated new networks")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
-        self.memory = PrioritisedMemory(self.state_shape, self.device, self.pretrained, path, self.batch_size)
+        self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, path)
 
     def step(self, state):
-        self.timestep += 1
+        self.train_step += 1
 
         if random.random() < self.epsilon:
             return torch.tensor([[random.randrange(self.action_n)]])
@@ -261,6 +296,94 @@ class Agent:
         # append experience to memory AFTER update so that indices in deque are the same
         self.memory.push(exp)
 
-        if self.timestep % self.update_target == 0:
-            print("updating target")
+        if self.train_step % self.update_target == 0:
             self.target_update()
+
+    def save(self):
+        with open(self.path + "episode_rewards.pkl", "wb") as f:
+            pickle.dump(self.episode_rewards, f)
+
+        with open(self.path + "buffer.pkl", "wb") as f:
+            pickle.dump(self.memory.tree, f)
+
+        torch.save(self.policy_network.state_dict(), self.path + "policy_network.pt")
+        torch.save(self.target_network.state_dict(), self.path + "target_network.pt")
+
+    def run(self, env, eps):
+
+        for ep in tqdm(range(eps)):
+            state = env.reset()
+            state = torch.Tensor([state])
+            # total_reward = 0
+            timestep = 0
+
+            while True:
+                timestep += 1
+
+                if self.plot:
+                    env.render()
+
+                    # if timestep % 10 == 0:
+                    #     render_state(state)
+
+                action = self.step(state)
+
+                successor, reward, terminal, info = env.step(int(action[0]))
+                successor = torch.Tensor([successor])
+
+                if self.training:
+                    experience = (
+                        state.float(),
+                        action.float(),
+                        torch.Tensor([reward]).unsqueeze(0).float(),
+                        successor.float(),
+                        torch.Tensor([int(terminal)]).unsqueeze(0).float()
+                    )
+
+                    self.train(experience)
+
+                state = successor
+
+                if terminal:
+                    break
+
+            if self.training:
+                self.episode_rewards.append(info['score'])
+
+                with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                    f.write("\nGame score after termination = {}".format(info['score']))
+
+                if ep % max(1, math.floor(eps / 4)) == 0:
+                    with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                        f.write("automatically saving params4 at episode {}".format(ep))
+
+                    self.save()
+
+        if self.training:
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("\nSaving final parameters!")
+            self.save()
+
+    def print_stats(self, eps):
+        with open(self.path + f'log4-{eps}.out', 'a') as f:
+            f.write("Total episodes trained over: {}".format(len(self.episode_rewards)))
+
+            sections = 10
+            section_size = math.floor(len(self.episode_rewards) / sections)
+            low = 0
+
+            f.write("\nAverage environment rewards over past {} episodes:".format(len(self.episode_rewards)))
+            f.write("EPISODE RANGE                AV. REWARD")
+
+            for i in range(sections):
+                high = (i + 1) * section_size
+
+                if i == sections - 1:
+                    av = sum(self.episode_rewards[low:]) / (len(self.episode_rewards) - low)
+                    f.write("[{}, {}) {} {}".format(low, len(self.episode_rewards), " " * (25 - 2 - len(str(low)) - len(str(len(self.episode_rewards)))), av))
+                else:
+                    av = sum(self.episode_rewards[low:high]) / (high - low)
+                    f.write("[{}, {}) {} {}".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
+
+                low = high
+

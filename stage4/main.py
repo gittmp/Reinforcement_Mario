@@ -1,125 +1,66 @@
-import os
-import math
-import torch
-from tqdm import tqdm
-import pickle
-
+import argparse
 from network import Agent
-from environment import make_env, plot_durations, render_state
+from environment import make_env
 
-game = 'SuperMarioBros-1-1-v0'
-env = make_env(game)
-training = True
-ncc = False
-plot = False
-pretrained = False
-no_eps = 25
 
-if ncc:
-    path = "ncc_params4/"
-else:
-    path = "params4/"
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Reinforcement Mario')
+    parser.add_argument('--eps', dest='no_eps', type=int, help='The number of episodes to run through', required=True)
+    parser.add_argument('--w', dest='world', type=int, help='The SMB world we wish to explore: [1, 2]', default=1)
+    parser.add_argument('-t', dest='training', action='store_true', help='True = train agent over episodes played; False = just run without training', default=False)
+    parser.add_argument('-plot', dest='plot', action='store_true', help='True = plot total reward after each completed episode', default=False)
+    parser.add_argument('-ptd', dest='pretrained', action='store_true', help='True = agent has been pretrained with parameter files available; False = start agent from scratch', default=False)
+    parser.add_argument('-ncc', dest='ncc', action='store_true', help='True = load pretrained data from NCC parameters; False = load from local parameters', default=False)
+    args = parser.parse_args()
 
-pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
+    no_eps = args.no_eps
+    world = args.world
+    training = args.training
+    plot = args.plot
+    pretrained = args.pretrained
+    ncc = args.ncc
 
-if pretrained:
-    with open(path + "episode_rewards.pkl", "rb") as f:
-        episode_rewards = pickle.load(f)
-        print("Loaded rewards over {} episodes from path = {}".format(len(episode_rewards), path + "episode_rewards.pkl"))
-else:
-    episode_rewards = []
+    if ncc:
+        path = "ncc_params4/"
+    else:
+        path = "params4/"
 
-env.reset()
+    if world == 2:
+        game = 'SuperMarioBros2-v0'
+    else:
+        game = 'SuperMarioBros-v0'
 
-agent = Agent(
-    state_shape=env.observation_space.shape,
-    action_n=env.action_space.n,
-    alpha=0.00025,
-    gamma=0.9,
-    epsilon_ceil=1.0,
-    epsilon_floor=0.02,
-    epsilon_decay=0.99,
-    buffer_capacity=30000,
-    batch_size=32,
-    update_target=5000,
-    pretrained=pretrained
-)
+    with open(path + f'log4-{no_eps}.out', 'w') as f:
+        f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, ncc={}, \n     path={}".format(no_eps, world, game, training, plot, pretrained, ncc, path))
 
-print("\nStarting episodes...\n")
-for ep in tqdm(range(no_eps)):
-    state = env.reset()
-    state = torch.Tensor([state])
-    # total_reward = 0
-    timestep = 0
+    env = make_env(game)
 
-    while True:
-        timestep += 1
+    agent = Agent(
+        state_shape=env.observation_space.shape,
+        action_n=env.action_space.n,
+        alpha=0.00025,
+        gamma=0.9,
+        epsilon_ceil=1.0,
+        epsilon_floor=0.02,
+        epsilon_decay=0.99,
+        buffer_capacity=30000,
+        batch_size=32,
+        update_target=5000,
+        eps=no_eps,
+        pretrained=pretrained,
+        path=path,
+        plot=plot,
+        training=training
+    )
 
-        if plot:
-            env.render()
+    with open(path + f'log4-{no_eps}.out', 'a') as f:
+        f.write("\nStarting episodes...\n")
 
-            # if timestep % 10 == 0:
-            #     render_state(state)
+    env.reset()
+    agent.run(env, no_eps)
+    env.close()
 
-        action = agent.step(state)
+    with open(path + f'log4-{no_eps}.out', 'a') as f:
+        f.write("\nTraining complete!\n")
 
-        successor, reward, terminal, info = env.step(int(action[0]))
-        # total_reward += reward
-        successor = torch.Tensor([successor])
-
-        if training:
-            experience = (
-                state.float(),
-                action.float(),
-                torch.Tensor([reward]).unsqueeze(0).float(),
-                successor.float(),
-                torch.Tensor([int(terminal)]).unsqueeze(0).float()
-            )
-            agent.train(experience)
-
-        state = successor
-
-        if terminal:
-            # print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
-            #       .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
-
-            # if plot:
-            #     plot_durations(episode_rewards)
-
-            break
-
-    if training:
-        # episode_rewards.append(total_reward)
-        episode_rewards.append(info['score'])
-        print("\nGame score after termination = {}".format(info['score']))
-
-        if ep % max(1.0, math.floor(no_eps / 4)) == 0:
-            print("automatically saving params4 at episode {}".format(ep))
-
-            with open(path + "episode_rewards.pkl", "wb") as f:
-                pickle.dump(episode_rewards, f)
-
-            # with open(path + "buffer.pkl", "wb") as f:
-            #     pickle.dump(agent.memory.tree, f)
-
-            torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
-            torch.save(agent.target_network.state_dict(), path + "target_network.pt")
-
-if training:
-    with open(path + "episode_rewards.pkl", "wb") as f:
-        pickle.dump(episode_rewards, f)
-
-    # with open(path + "buffer.pkl", "wb") as f:
-    #     pickle.dump(agent.memory.tree, f)
-
-    torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
-    torch.save(agent.target_network.state_dict(), path + "target_network.pt")
-
-    print("Final parameters saved!")
-
-env.close()
-
-print("\nTRAINING COMPLETE")
-print("Total episodes trained over:", len(episode_rewards))
-print("Average reward over all episodes:", sum(episode_rewards)/len(episode_rewards))
-print("Average reward over last training session:", sum(episode_rewards[-no_eps:])/no_eps)
+    agent.print_stats()
