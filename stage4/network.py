@@ -116,12 +116,12 @@ class PrioritisedMemory:
                 self.tree = pickle.load(f)
 
             with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                f.write("Loaded memory tree from path = {}".format(self.path + "buffer.pkl"))
+                f.write("Loaded memory tree from path = {} \n".format(self.path + "buffer.pkl"))
         else:
             self.tree = BinarySumTree()
 
             with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                f.write("Generated new memory tree")
+                f.write("Generated new memory tree \n")
 
     def size(self):
         return len(self.tree.tree)
@@ -234,19 +234,19 @@ class Agent:
             self.policy_network.load_state_dict(torch.load(self.path + "target_network.pt", map_location=torch.device(self.device)))
 
             with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                f.write("Loaded policy network from path = {}".format(self.path + "policy_network.pt"))
-                f.write("Loaded target network from path = {}".format(self.path + "target_network.pt"))
+                f.write("\nLoaded policy network from path = {} \n".format(self.path + "policy_network.pt"))
+                f.write("Loaded target network from path = {} \n".format(self.path + "target_network.pt"))
 
             with open(self.path + "episode_rewards.pkl", "rb") as f:
                 self.episode_rewards = pickle.load(f)
 
             with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                f.write("Loaded rewards over {} episodes from path = {}".format(len(self.episode_rewards), path))
+                f.write("Loaded rewards over {} episodes from path = {} \n".format(len(self.episode_rewards), path))
         else:
             self.episode_rewards = []
 
             with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                f.write("Generated randomly initiated new networks")
+                f.write("\nGenerated randomly initiated new networks \n")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
         self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, path)
@@ -351,39 +351,39 @@ class Agent:
                 self.episode_rewards.append(info['score'])
 
                 with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                    f.write("\nGame score after termination = {}".format(info['score']))
+                    f.write("\nGame score after termination = {} \n".format(info['score']))
 
                 if ep % max(1, math.floor(eps / 4)) == 0:
                     with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                        f.write("automatically saving params4 at episode {}".format(ep))
+                        f.write("automatically saving params4 at episode {} \n".format(ep))
 
                     self.save()
 
         if self.training:
             with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                f.write("\nSaving final parameters!")
+                f.write("\nSaving final parameters! \n")
             self.save()
 
-    def print_stats(self, eps):
-        with open(self.path + f'log4-{eps}.out', 'a') as f:
-            f.write("Total episodes trained over: {}".format(len(self.episode_rewards)))
+    def print_stats(self):
+        with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            f.write("Total episodes trained over: {} \n".format(len(self.episode_rewards)))
 
             sections = 10
             section_size = math.floor(len(self.episode_rewards) / sections)
             low = 0
 
-            f.write("\nAverage environment rewards over past {} episodes:".format(len(self.episode_rewards)))
-            f.write("EPISODE RANGE                AV. REWARD")
+            f.write("\nAverage environment rewards over past {} episodes: \n".format(len(self.episode_rewards)))
+            f.write("EPISODE RANGE                AV. REWARD \n")
 
             for i in range(sections):
                 high = (i + 1) * section_size
 
                 if i == sections - 1:
                     av = sum(self.episode_rewards[low:]) / (len(self.episode_rewards) - low)
-                    f.write("[{}, {}) {} {}".format(low, len(self.episode_rewards), " " * (25 - 2 - len(str(low)) - len(str(len(self.episode_rewards)))), av))
+                    f.write("[{}, {}) {} {} \n".format(low, len(self.episode_rewards), " " * (25 - 2 - len(str(low)) - len(str(len(self.episode_rewards)))), av))
                 else:
                     av = sum(self.episode_rewards[low:high]) / (high - low)
-                    f.write("[{}, {}) {} {}".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
+                    f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
 
                 low = high
 

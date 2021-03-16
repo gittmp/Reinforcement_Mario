@@ -1,29 +1,9 @@
 import argparse
-from network import Agent
-from environment import make_env
+from stage4.network import *
+from stage4.environment import *
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Reinforcement Mario')
-    parser.add_argument('--eps', dest='no_eps', type=int, help='The number of episodes to run through', required=True)
-    parser.add_argument('--w', dest='world', type=int, help='The SMB world we wish to explore: [1, 2]', default=1)
-    parser.add_argument('-t', dest='training', action='store_true', help='True = train agent over episodes played; False = just run without training', default=False)
-    parser.add_argument('-plot', dest='plot', action='store_true', help='True = plot total reward after each completed episode', default=False)
-    parser.add_argument('-ptd', dest='pretrained', action='store_true', help='True = agent has been pretrained with parameter files available; False = start agent from scratch', default=False)
-    parser.add_argument('-ncc', dest='ncc', action='store_true', help='True = load pretrained data from NCC parameters; False = load from local parameters', default=False)
-    args = parser.parse_args()
-
-    no_eps = args.no_eps
-    world = args.world
-    training = args.training
-    plot = args.plot
-    pretrained = args.pretrained
-    ncc = args.ncc
-
-    if ncc:
-        path = "ncc_params4/"
-    else:
-        path = "params4/"
+def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path=None):
 
     if world == 2:
         game = 'SuperMarioBros2-v0'
@@ -31,9 +11,14 @@ if __name__ == "__main__":
         game = 'SuperMarioBros-v0'
 
     with open(path + f'log4-{no_eps}.out', 'w') as f:
-        f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, ncc={}, \n     path={}".format(no_eps, world, game, training, plot, pretrained, ncc, path))
+        f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, ncc={}, \n     path={} \n".format(no_eps, world, game, training, plot, pretrained, ncc, path))
 
-    env = make_env(game)
+    src = {
+        'path': path,
+        'eps': no_eps
+    }
+
+    env = make_env(game, src)
 
     agent = Agent(
         state_shape=env.observation_space.shape,
@@ -64,3 +49,35 @@ if __name__ == "__main__":
         f.write("\nTraining complete!\n")
 
     agent.print_stats()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Reinforcement Mario')
+    parser.add_argument('--eps', dest='no_eps', type=int, help='The number of episodes to run through', required=True)
+    parser.add_argument('--w', dest='world', type=int, help='The SMB world we wish to explore: [1, 2]', default=1)
+    parser.add_argument('-t', dest='training', action='store_true',
+                        help='True = train agent over episodes played; False = just run without training',
+                        default=False)
+    parser.add_argument('-plot', dest='plot', action='store_true',
+                        help='True = plot total reward after each completed episode', default=False)
+    parser.add_argument('-ptd', dest='pretrained', action='store_true',
+                        help='True = agent has been pretrained with parameter files available; False = start agent from scratch',
+                        default=False)
+    parser.add_argument('-ncc', dest='ncc', action='store_true',
+                        help='True = load pretrained data from NCC parameters; False = load from local parameters',
+                        default=False)
+    args = parser.parse_args()
+
+    ne = args.no_eps
+    w = args.world
+    t = args.training
+    p = args.plot
+    ptd = args.pretrained
+    ncc = args.ncc
+
+    if ncc:
+        path = 'ncc_params4/'
+    else:
+        path = 'params4/'
+
+    run(no_eps=ne, training=t, pretrained=ptd, plot=p, world=w, path=path)

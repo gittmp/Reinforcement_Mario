@@ -1,6 +1,0 @@
-gym-super-mario-bros
-torch
-tqdm
-matplotlib
-numpy
-opencv-python
