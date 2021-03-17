@@ -1,6 +1,6 @@
 import argparse
-from stage4.network import *
-from stage4.environment import *
+from stage4.agent4.network import *
+from stage4.agent4.environment import *
 
 
 def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path=None):
@@ -11,7 +11,7 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
         game = 'SuperMarioBros-v0'
 
     with open(path + f'log4-{no_eps}.out', 'w') as f:
-        f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, ncc={}, \n     path={} \n".format(no_eps, world, game, training, plot, pretrained, ncc, path))
+        f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, path={} \n".format(no_eps, world, game, training, plot, pretrained, path))
 
     src = {
         'path': path,
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     ncc = args.ncc
 
     if ncc:
-        path = 'ncc_params4/'
+        path = '../../ncc_tests/ncc_params4/'
     else:
         path = 'params4/'
 

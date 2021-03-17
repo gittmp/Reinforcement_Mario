@@ -5,8 +5,8 @@ from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
 
-from stage3.agent2.network import *
-from stage3.agent2.environment import *
+from stage4.agent2.network import *
+from stage4.agent2.environment import *
 
 
 # plot function which plots durations the figure during training.

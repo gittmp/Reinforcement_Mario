@@ -64,17 +64,23 @@ class BinarySumTree(object):
     def update(self, i, e):
         self.tree[i] = e
 
-    def get_leaf(self, l, h):
+    def get_leaf(self):
+        # input (l, h)
         # retrieve random priority error in range low-high
-        val = np.random.uniform(l, h)
-        err = 0
-        R = len(self.tree)
+        # val = np.random.uniform(l, h)
+        # err = 0
+        # R = len(self.tree)
+        # node = 0
+        #
+        # for i in range(R):
+        #     if err < self.tree[i] < val:
+        #         err = self.tree[i]
+        #         node = i
+        #
+        # trans = self.buffer[node]
 
-        for i in range(R):
-            if err < self.tree[i] < val:
-                err = self.tree[i]
-                node = i
-
+        node = np.random.randint(0, self.size())
+        err = self.tree[node]
         trans = self.buffer[node]
 
         return node, float(err), trans
@@ -141,13 +147,13 @@ class PrioritisedMemory:
 
         # uniformly sample transitions from each priority section
         priorities = []
-        section_length = self.tree.max_priority() / self.batch_size
+        # section_length = self.tree.max_priority() / self.batch_size
         N = self.tree.size()
-        low = 0
 
         for i in range(self.batch_size):
-            high = (i + 1) * section_length
-            index, error, transition = self.tree.get_leaf(low, high)
+            # low = i * section_length
+            # high = (i + 1) * section_length
+            index, error, transition = self.tree.get_leaf()
 
             p_i = float(error) + self.epsilon
             p_i_a = pow(p_i, self.alpha)
@@ -224,7 +230,7 @@ class Agent:
 
         self.train_step = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.loss = nn.SmoothL1Loss().to(self.device)
+        self.loss = nn.SmoothL1Loss(reduction='none').to(self.device)
 
         self.policy_network = Network(state_shape, action_n).to(self.device)
         self.target_network = Network(state_shape, action_n).to(self.device)
@@ -265,7 +271,11 @@ class Agent:
 
     def train(self, exp):
 
+        # append experience to memory BEFORE update so that indices in deque are the same for sample + update
+        self.memory.push(exp)
+
         if self.memory.size() < self.batch_size * 100:
+            # print("MEMORY TOO SMOLL: size = {}, target = {}".format(self.memory.size(), self.batch_size * 100))
             return
 
         # sample from memory
@@ -286,15 +296,12 @@ class Agent:
         abs_errors = torch.abs(targets - q_vals)
         self.memory.update(indices, abs_errors)
 
-        td_loss = self.loss(q_vals, targets)
+        td_losses = self.loss(q_vals, targets)
+        loss = (weights * td_losses).mean()
 
-        loss = (weights * td_loss).mean()
         loss.backward()
         self.optimiser.step()
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
-
-        # append experience to memory AFTER update so that indices in deque are the same
-        self.memory.push(exp)
 
         if self.train_step % self.update_target == 0:
             self.target_update()
@@ -370,12 +377,12 @@ class Agent:
 
             sections = 10
             section_size = math.floor(len(self.episode_rewards) / sections)
-            low = 0
 
             f.write("\nAverage environment rewards over past {} episodes: \n".format(len(self.episode_rewards)))
             f.write("EPISODE RANGE                AV. REWARD \n")
 
             for i in range(sections):
+                low = i * section_size
                 high = (i + 1) * section_size
 
                 if i == sections - 1:
@@ -384,6 +391,3 @@ class Agent:
                 else:
                     av = sum(self.episode_rewards[low:high]) / (high - low)
                     f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
-
-                low = high
-
