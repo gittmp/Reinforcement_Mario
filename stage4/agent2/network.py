@@ -37,22 +37,28 @@ class Network(nn.Module):
 
 
 class Memory:
-    def __init__(self, state_shape, buffer_capacity, batch_size, pretrained, device, path):
+    def __init__(self, state_shape, buffer_capacity, batch_size, pretrained, device, source):
 
         self.batch_size = batch_size
         self.pretrained = pretrained
         self.state_shape = state_shape
         self.device = device
+        self.source = source
 
         if self.pretrained:
-            with open(path + "buffer.pkl", "rb") as f:
+            with open(self.source["path"] + "buffer.pkl", "rb") as f:
                 self.buffer = pickle.load(f)
+
             self.buffer_capacity = self.buffer.maxlen
-            print("Loaded buffer from path = {}".format(path + "buffer.pkl"))
+
+            with open(self.source["path"] + f'log4-{self.source["eps"]}.out', 'a') as f:
+                f.write("Loaded buffer from path = {}".format(self.source["path"] + "buffer.pkl"))
         else:
             self.buffer = collections.deque(maxlen=buffer_capacity)
             self.buffer_capacity = buffer_capacity
-            print("Generated new buffer")
+
+            with open(self.source["path"] + f'log4-{self.source["eps"]}.out', 'a') as f:
+                f.write("Generated new buffer")
 
     def push(self, experience):
         self.buffer.append(experience)
@@ -84,7 +90,7 @@ class Agent:
     def __init__(self, state_shape, action_n,
                  alpha, gamma, epsilon_ceil, epsilon_floor, epsilon_decay,
                  buffer_capacity, batch_size, update_target,
-                 pretrained, path=None):
+                 pretrained, source):
 
         self.state_shape = state_shape
         self.action_n = action_n
@@ -98,6 +104,7 @@ class Agent:
         self.pretrained = pretrained
         self.memory_capacity = buffer_capacity
         self.batch_size = batch_size
+        self.source = source
 
         self.timestep = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -106,17 +113,19 @@ class Agent:
         self.policy_network = Network(state_shape, action_n).to(self.device)
         self.target_network = Network(state_shape, action_n).to(self.device)
 
-        if self.pretrained:
-            self.policy_network.load_state_dict(torch.load(path + "policy_network.pt", map_location=torch.device(self.device)))
-            self.policy_network.load_state_dict(torch.load(path + "target_network.pt", map_location=torch.device(self.device)))
-            print("Loaded policy network from path = {}".format(path + "policy_network.pt"))
-            print("Loaded target network from path = {}".format(path + "target_network.pt"))
-        else:
-            print("Generated randomly initiated new networks")
+        with open(self.source["path"] + f'log4-{self.source["eps"]}.out', 'a') as f:
+            if self.pretrained:
+                self.policy_network.load_state_dict(torch.load(self.source["path"] + "policy_network.pt", map_location=torch.device(self.device)))
+                self.policy_network.load_state_dict(torch.load(self.source["path"] + "target_network.pt", map_location=torch.device(self.device)))
+
+                f.write("Loaded policy network from path = {}".format(self.source["path"] + "policy_network.pt"))
+                f.write("Loaded target network from path = {}".format(self.source["path"] + "target_network.pt"))
+            else:
+                f.write("Generated randomly initiated new networks")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
-        self.memory = Memory(state_shape, buffer_capacity, batch_size, pretrained, self.device, path)
+        self.memory = Memory(state_shape, buffer_capacity, batch_size, pretrained, self.device, self.source)
 
     def step(self, state):
         self.timestep += 1

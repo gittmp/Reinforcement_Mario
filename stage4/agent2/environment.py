@@ -63,7 +63,7 @@ ACTION_SET = [
 # Wrapper (for whole environment) which return only every `skip`-th frame, and adapts reward function
 class SkipAndReward(gym.Wrapper):
     # initialise no. frames to skip and frame buffer as deque length 2
-    def __init__(self, env=None, skip=4):
+    def __init__(self, source, env=None, skip=4):
         super(SkipAndReward, self).__init__(env)
         self.env = env
         self._skip = skip
@@ -74,6 +74,7 @@ class SkipAndReward(gym.Wrapper):
         self.prev_status = 'small'
         self.prev_grad = 1
         self.zero_grad_counter = 0
+        self.source = source
 
     def x_gradient(self):
         entries = len(self.x_buffer)
@@ -160,7 +161,8 @@ class SkipAndReward(gym.Wrapper):
     def reset(self):
         length = len(self.reward_buffer)
         if length > 0:
-            print("Mean reward over last {} time-steps = {:.1f}\n".format(length, sum(self.reward_buffer) / length))
+            with open(self.source["path"] + f'log4-{self.source["eps"]}.out', 'a') as f:
+                f.write("Mean reward over last {} time-steps = {:.1f}\n".format(length, sum(self.reward_buffer) / length))
 
         self.reward_buffer = []
         self.frame_buffer.clear()
@@ -255,12 +257,12 @@ class BufferWrapper(gym.ObservationWrapper):
 
 
 # Function combining into pipeline of wrapper transforms
-def make_env(game):
+def make_env(game, source):
     # make env
     env = SMBGym.make(game)
 
     # apply pipeline
-    env = SkipAndReward(env)
+    env = SkipAndReward(source, env)
     env = ProcessFrame(env)
     env = ImageToPyTorch(env)
     env = BufferWrapper(env)

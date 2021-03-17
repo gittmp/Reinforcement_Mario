@@ -5,8 +5,8 @@ from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
 
-from stage4.agent2.network import *
-from stage4.agent2.environment import *
+from agent2.network import *
+from agent2.environment import *
 
 
 # plot function which plots durations the figure during training.
@@ -39,6 +39,29 @@ def render_state(four_frames):
     plt.pause(0.001)
 
 
+def print_stats(path, n_eps, episode_rewards):
+    with open(path + f'log4-{n_eps}.out', 'a') as f:
+        f.write("\nTRAINING COMPLETE")
+        f.write("Total episodes trained over: {} \n".format(len(episode_rewards)))
+
+        sections = 10
+        section_size = math.floor(len(episode_rewards) / sections)
+
+        f.write("\nAverage environment rewards over past {} episodes: \n".format(len(episode_rewards)))
+        f.write("EPISODE RANGE                AV. REWARD \n")
+
+        for i in range(sections):
+            low = i * section_size
+            high = (i + 1) * section_size
+
+            if i == sections - 1:
+                av = sum(episode_rewards[low:]) / (len(episode_rewards) - low)
+                f.write("[{}, {}) {} {} \n".format(low, len(episode_rewards), " " * (25 - 2 - len(str(low)) - len(str(len(episode_rewards)))), av))
+            else:
+                av = sum(episode_rewards[low:high]) / (high - low)
+                f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
+
+
 def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path=None):
 
     if world == 2:
@@ -46,14 +69,18 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
     else:
         game = 'SuperMarioBros-v0'
 
-    env = make_env(game)
+    src = {
+        'path': path,
+        'eps': no_eps
+    }
+
+    env = make_env(game, src)
 
     pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 
     if pretrained:
         with open(path + "episode_rewards.pkl", "rb") as f:
             episode_rewards = pickle.load(f)
-            print("Loaded rewards over {} episodes from path = {}".format(len(episode_rewards), path + 'episode_rewards.pkl'))
     else:
         episode_rewards = []
 
@@ -71,10 +98,9 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
         batch_size=32,
         update_target=5000,
         pretrained=pretrained,
-        path=path
+        source=src
     )
 
-    print("\nStarting episodes...\n")
     for ep in tqdm(range(no_eps)):
         state = env.reset()
         state = torch.Tensor([state])
@@ -107,9 +133,6 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
             state = successor
 
             if terminal:
-                # print("\nInfo:\nfinal game score = {}, time elapsed = {}, Mario's location = ({}, {})"
-                #       .format(info['score'], 400 - info['time'], info['x_pos'], info['y_pos']))
-
                 if plot:
                     plot_durations(episode_rewards)
                 break
@@ -117,13 +140,16 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
         if training:
             # episode_rewards.append(total_reward)
             episode_rewards.append(info['score'])
-            print("Game score after termination = {}".format(info['score']))
+
+            with open(path + f'log4-{no_eps}.out', 'a') as f:
+                f.write("Game score after termination = {}".format(info['score']))
 
             if plot:
                 plot_durations(episode_rewards)
 
             if ep % math.floor(no_eps / 4) == 0:
-                print("automatically saving prams at episode {}".format(ep))
+                with open(path + f'log4-{no_eps}.out', 'a') as f:
+                    f.write("automatically saving prams at episode {}".format(ep))
 
                 with open(path + "episode_rewards.pkl", "wb") as f:
                     pickle.dump(episode_rewards, f)
@@ -144,11 +170,9 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
         torch.save(agent.policy_network.state_dict(), path + "policy_network.pt")
         torch.save(agent.target_network.state_dict(), path + "target_network.pt")
 
-        print("Final parameters saved!")
+        with open(path + f'log4-{no_eps}.out', 'a') as f:
+            f.write("Final parameters saved!")
 
     env.close()
 
-    print("\nTRAINING COMPLETE")
-    print("Total episodes trained over:", len(episode_rewards))
-    print("Average reward over all episodes:", sum(episode_rewards)/len(episode_rewards))
-    print("Average reward over last training session:", sum(episode_rewards[-no_eps:])/no_eps)
+    print_stats(path, no_eps, episode_rewards)

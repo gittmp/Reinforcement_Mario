@@ -1,6 +1,6 @@
 import argparse
-from stage4.agent4.network import *
-from stage4.agent4.environment import *
+from agent4.network import *
+from agent4.environment import *
 
 
 def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path=None):

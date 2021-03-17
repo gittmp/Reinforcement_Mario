@@ -5,8 +5,8 @@ from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
 
-from stage4.agent3.network import *
-from stage4.agent3.environment import *
+from agent3.network import *
+from agent3.environment import *
 
 
 # plot function which plots durations the figure during training.
@@ -46,7 +46,12 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
     else:
         game = 'SuperMarioBros-v0'
 
-    env = make_env(game)
+    src = {
+        'path': path,
+        'eps': no_eps
+    }
+
+    env = make_env(game, src)
 
     pretrained = pretrained and os.path.isfile(path + "policy_network.pt")
 
@@ -71,7 +76,7 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
         batch_size=32,
         update_target=5000,
         pretrained=pretrained,
-        path=path
+        source=src
     )
 
     print("\nStarting episodes...\n")

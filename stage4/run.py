@@ -1,7 +1,7 @@
 import argparse
-import stage4.agent2.main as agent2
-import stage4.agent3.main as agent3
-import stage4.agent4.main as agent4
+import agent2.main as agent2
+import agent3.main as agent3
+import agent4.main as agent4
 
 
 if __name__ == '__main__':
@@ -31,40 +31,40 @@ if __name__ == '__main__':
     ncc = args.ncc
 
     if agent == 2:
-        path = 'stage4/agent2/'
+        path = 'agent2/'
 
         if ncc:
             path += 'ncc_params2/'
         else:
             path += 'params2/'
 
-        with open(path + f'log4-{no_eps}.out', 'a') as f:
+        with open(path + f'log4-{no_eps}.out', 'w') as f:
             f.write("\nAGENT {} SELECTED! \nStarting episodes...\n".format(agent))
 
         agent2.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, path=path)
 
     elif agent == 3:
-        path = 'stage4/agent3/'
+        path = 'agent3/'
 
         if ncc:
             path += 'ncc_params3/'
         else:
             path += 'params3/'
 
-        with open(path + f'log4-{no_eps}.out', 'a') as f:
+        with open(path + f'log4-{no_eps}.out', 'w') as f:
             f.write("\nAGENT {} SELECTED! \nStarting episodes...\n".format(agent))
 
         agent3.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, path=path)
 
     elif agent == 4:
-        path = 'stage4/agent4/'
+        path = 'agent4/'
 
         if ncc:
             path += 'ncc_params4/'
         else:
             path += 'params4/'
 
-        with open(path + f'log4-{no_eps}.out', 'a') as f:
+        with open(path + f'log4-{no_eps}.out', 'w') as f:
             f.write("\nAGENT {} SELECTED! \nStarting episodes...\n".format(agent))
 
         agent4.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, path=path)
