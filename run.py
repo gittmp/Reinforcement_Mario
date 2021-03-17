@@ -57,7 +57,7 @@ if __name__ == '__main__':
         agent3.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, path=path)
 
     elif agent == 4:
-        path = 'stage4/'
+        path = 'stage4/agent4/'
 
         if ncc:
             path += 'ncc_params4/'
