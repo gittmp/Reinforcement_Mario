@@ -113,16 +113,16 @@ class SkipAndReward(gym.Wrapper):
         self.prev_score = data['score']
 
         if data['status'] == 'fireball' and self.prev_status != 'fireball':
-            status_reward = 6
+            status_reward = 10
             self.prev_status = 'fireball'
         elif data['status'] == 'tall' and self.prev_status != 'tall':
-            status_reward = 6
+            status_reward = 10
             self.prev_status = 'tall'
         else:
             status_reward = 0
             self.prev_status = 'small'
 
-        reward = round(x_reward + abs(rew) + flag_reward + score_reward + status_reward)
+        reward = round(x_reward + rew + flag_reward + score_reward + status_reward)
 
         if reward > 15:
             reward = 15

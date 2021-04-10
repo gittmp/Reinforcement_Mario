@@ -6,9 +6,12 @@ import agent4.main as agent4
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Reinforcement Mario')
-    parser.add_argument('--A', dest='agent', type=int, help='Agent version to utilise: [2, 3, 4]', required=True)
+    parser.add_argument('--A', dest='agent', type=int, help='Agent version to utilise: {2, 3, 4}', required=True)
     parser.add_argument('--N', dest='no_eps', type=int, help='The number of episodes to run through', required=True)
-    parser.add_argument('--w', dest='world', type=int, help='The SMB world we wish to explore: [1, 2]', default=1)
+    parser.add_argument('--nwk', dest='network', type=int, help='Network version to utilise: {0, 1}', default=1)
+    parser.add_argument('--w', dest='world', type=int, help='The SMB world we wish to explore: {1, 2, 3, 4, 5, 6, 7, 8}', default=1)
+    parser.add_argument('--s', dest='stage', type=int, help='The stage of the SMB world we wish to explore: {1, 2, 3, 4}', default=1)
+    parser.add_argument('--v', dest='version', type=int, help='The ROM version of SMB we wish to explore: {0, 1, 2, 3}', default=0)
     parser.add_argument('-t', dest='training', action='store_true',
                         help='True = train agent over episodes played; False = just run without training',
                         default=False)
@@ -25,49 +28,49 @@ if __name__ == '__main__':
     agent = args.agent
     no_eps = args.no_eps
     world = args.world
+    stage = args.stage
+    version = args.version
     training = args.training
     plot = args.plot
     pretrained = args.pretrained
     ncc = args.ncc
+    network = args.network
 
     if agent == 2:
-        path = 'agent2/'
 
         if ncc:
-            path += 'ncc_params2/'
+            path = '../stage5/ncc_tests/ncc_params2/'
         else:
-            path += 'params2/'
+            path = 'agent2/params2/'
 
         with open(path + f'log4-{no_eps}.out', 'w') as f:
             f.write("\nAGENT {} SELECTED! \nStarting episodes...\n".format(agent))
 
-        agent2.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, path=path)
+        agent2.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, stage=stage, version=version, path=path)
 
     elif agent == 3:
-        path = 'agent3/'
 
         if ncc:
-            path += 'ncc_params3/'
+            path = '../stage5/ncc_tests/ncc_params3/'
         else:
-            path += 'params3/'
+            path = 'agent3/params3/'
 
         with open(path + f'log4-{no_eps}.out', 'w') as f:
             f.write("\nAGENT {} SELECTED! \nStarting episodes...\n".format(agent))
 
-        agent3.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, path=path)
+        agent3.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, stage=stage, version=version, path=path)
 
     elif agent == 4:
-        path = 'agent4/'
 
         if ncc:
-            path += 'ncc_params4/'
+            path = '../stage5/ncc_tests/ncc_params4/'
         else:
-            path += 'params4/'
+            path = 'agent4/params4/'
 
         with open(path + f'log4-{no_eps}.out', 'w') as f:
             f.write("\nAGENT {} SELECTED! \nStarting episodes...\n".format(agent))
 
-        agent4.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, path=path)
+        agent4.run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, stage=stage, version=version, path=path, net=network)
 
     else:
         print("ERROR: invalid agent selected!")

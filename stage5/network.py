@@ -54,7 +54,6 @@ class Network1(nn.Module):
     def __init__(self, in_features, n_actions):
         super(Network1, self).__init__()
         self.in_features = in_features
-        print("In features:", self.in_features)
 
         # VERSION: architecture from 'DDDQN (Double Dueling Deep Q Learning with Prioritized Experience Replay)'
 
@@ -85,16 +84,66 @@ class Network1(nn.Module):
 
     # forward pass combining conv set and lin set
     def forward(self, x):
-        print("In features:", self.in_features)
-
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
-
-        # x = x.view(x.size()[0], -1)
         x = self.fc(x)
 
         return x
+
+
+class BasicMemory:
+    def __init__(self, state_shape, buffer_capacity, batch_size, pretrained, device, path, eps):
+
+        self.batch_size = batch_size
+        self.pretrained = pretrained
+        self.state_shape = state_shape
+        self.device = device
+        self.path = path
+        self.n_eps = eps
+
+        if self.pretrained:
+            with open(path + "buffer.pkl", "rb") as f:
+                self.buffer = pickle.load(f)
+
+            self.buffer_capacity = self.buffer.maxlen
+
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("Loaded buffer from path = {}".format(self.path + "buffer.pkl"))
+        else:
+            self.buffer = deque(maxlen=buffer_capacity)
+            self.buffer_capacity = buffer_capacity
+
+            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                f.write("Generated new buffer")
+
+    def push(self, experience):
+        self.buffer.append(experience)
+
+    def sample(self):
+        batch = random.sample(self.buffer, self.batch_size)
+        state_batch = torch.zeros(self.batch_size, *self.state_shape)
+        action_batch = torch.zeros(self.batch_size, 1)
+        reward_batch = torch.zeros(self.batch_size, 1)
+        successor_batch = torch.zeros(self.batch_size, *self.state_shape)
+        terminal_batch = torch.zeros(self.batch_size, 1)
+
+        for i in range(self.batch_size):
+            s, a, r, succ, term = batch[i]
+            state_batch[i] = s
+            action_batch[i] = a
+            reward_batch[i] = r
+            successor_batch[i] = succ
+            terminal_batch[i] = term
+
+        return state_batch.to(self.device), \
+               action_batch.to(self.device), \
+               reward_batch.to(self.device), \
+               successor_batch.to(self.device), \
+               terminal_batch.to(self.device)
+
+    def size(self):
+        return len(self.buffer)
 
 
 class TreeStruct(object):
@@ -248,8 +297,13 @@ class PrioritisedMemory:
 class Agent:
     def __init__(self, state_shape, action_n,
                  alpha, gamma, epsilon_ceil, epsilon_floor, epsilon_decay,
-                 buffer_capacity, batch_size, update_target, eps,
-                 pretrained=False, path=None, plot=False, training=False, network=1):
+                 buffer_capacity, batch_size, update_target, source,
+                 pretrained=False, plot=False, training=False,
+                 network=1, memory=1):
+
+        self.n_eps = source["eps"]
+        self.path = source["path"]
+        self.version = memory
 
         self.state_shape = state_shape
         self.action_n = action_n
@@ -260,12 +314,10 @@ class Agent:
         self.epsilon_floor = epsilon_floor
         self.epsilon_decay = epsilon_decay
         self.update_target = update_target
-        self.pretrained = pretrained and check_files(path)
+        self.pretrained = pretrained and check_files(self.path)
         self.memory_capacity = buffer_capacity
         self.batch_size = batch_size
 
-        self.n_eps = eps
-        self.path = path
         self.plot = plot
         self.training = training
 
@@ -276,7 +328,7 @@ class Agent:
         if network == 0:
             self.policy_network = Network0(state_shape, action_n).to(self.device)
             self.target_network = Network0(state_shape, action_n).to(self.device)
-        else:
+        else:  # network == 1
             self.policy_network = Network1(state_shape, action_n).to(self.device)
             self.target_network = Network1(state_shape, action_n).to(self.device)
 
@@ -292,7 +344,7 @@ class Agent:
                 self.episode_rewards = pickle.load(f)
 
             with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
-                f.write("Loaded rewards over {} episodes from path = {} \n".format(len(self.episode_rewards), path))
+                f.write("Loaded rewards over {} episodes from path = {} \n".format(len(self.episode_rewards), self.path))
         else:
             self.episode_rewards = []
 
@@ -300,11 +352,13 @@ class Agent:
                 f.write("\nGenerated randomly initiated new networks \n")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
-        self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, path)
+
+        if self.version == 1:
+            self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, self.path)
+        else:  # self.version == 0
+            self.memory = BasicMemory(state_shape, buffer_capacity, batch_size, pretrained, self.device, self.path, self.n_eps)
 
     def step(self, state):
-        self.train_step += 1
-
         if random.random() < self.epsilon:
             return torch.tensor([[random.randrange(self.action_n)]])
         else:
@@ -314,21 +368,27 @@ class Agent:
     def target_update(self):
         self.target_network.load_state_dict(self.policy_network.state_dict())
 
-    def train(self, exp):
-        # append experience to memory BEFORE update so that indices in deque are the same for sample + update
+    def train(self, exp, ep):
+        self.train_step += 1
         self.memory.push(exp)
 
         if self.memory.size() < self.batch_size * 100:
-            # print("MEMORY TOO SMOLL: size = {}, target = {}".format(self.memory.size(), self.batch_size * 100))
+            print("\rCan't train on episode {} - MEMORY TOO SMALL: size = {}, target = {}".format(ep, self.memory.size(), self.batch_size * 100), end='', flush=True)
             return
 
+        print("\rTraining on step {} in episode {}".format(self.train_step, ep), end='', flush=True)
+
         # sample from memory
-        indices, batch, weights = self.memory.sample()
-        states = batch['states']
-        actions = batch['actions']
-        rewards = batch['rewards']
-        successors = batch['successors']
-        terminals = batch['terminals']
+        if self.version == 1:
+            indices, batch, weights = self.memory.sample()
+            print(weights)
+            states = batch['states']
+            actions = batch['actions']
+            rewards = batch['rewards']
+            successors = batch['successors']
+            terminals = batch['terminals']
+        else:  # self.version == 0
+            states, actions, rewards, successors, terminals = self.memory.sample()
 
         self.optimiser.zero_grad()
 
@@ -337,10 +397,14 @@ class Agent:
 
         # TD error = TD target - prev. q-value
         q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
-        td_errors = torch.abs(targets - q_vals)
-        self.memory.update(indices, td_errors)
 
-        loss = (weights * self.loss(q_vals, targets)).mean()
+        if self.version == 1:
+            td_errors = torch.abs(targets - q_vals)
+            self.memory.update(indices, td_errors)
+            loss = (weights * self.loss(q_vals, targets)).mean()
+        else:  # self.version == 0
+            loss = self.loss(q_vals, targets)
+
         loss.backward()
         self.optimiser.step()
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
@@ -353,7 +417,10 @@ class Agent:
             pickle.dump(self.episode_rewards, f)
 
         with open(self.path + "buffer.pkl", "wb") as f:
-            pickle.dump(self.memory.tree, f)
+            if self.version == 1:
+                pickle.dump(self.memory.tree, f)
+            else:  # self.version == 0
+                pickle.dump(self.memory.buffer, f)
 
         torch.save(self.policy_network.state_dict(), self.path + "policy_network.pt")
         torch.save(self.target_network.state_dict(), self.path + "target_network.pt")
@@ -361,10 +428,9 @@ class Agent:
     def run(self, env, eps):
 
         for ep in tqdm(range(eps)):
+
             state = env.reset()
             state = torch.Tensor([state])
-            # total_reward = 0
-            # timestep = 0
 
             while True:
                 # timestep += 1
@@ -389,7 +455,7 @@ class Agent:
                         torch.Tensor([int(terminal)]).unsqueeze(0).float()
                     )
 
-                    self.train(experience)
+                    self.train(experience, ep)
 
                 state = successor
 
@@ -414,7 +480,7 @@ class Agent:
             self.save()
 
     def print_stats(self):
-        print("\nTotal time getting leaves: {}".format(sum(self.memory.times['leaves'])))
+        """print("\nTotal time getting leaves: {}".format(sum(self.memory.times['leaves'])))
         print("Average time getting leaves: {}".format(sum(self.memory.times['leaves']) / len(self.memory.times['leaves'])))
 
         print("\nTotal time initiating weights: {}".format(sum(self.memory.times['weights_init'])))
@@ -425,7 +491,7 @@ class Agent:
         print("\nTotal time initiating batch: {}".format(sum(self.memory.times['batch_init'])))
         print("Average time initiating batch: {}".format(sum(self.memory.times['batch_init']) / len(self.memory.times['batch_init'])))
         print("Total time looping through batch: {}".format(sum(self.memory.times['batch_loop'])))
-        print("Average time looping through batch: {}".format(sum(self.memory.times['batch_loop']) / len(self.memory.times['batch_loop'])))
+        print("Average time looping through batch: {}".format(sum(self.memory.times['batch_loop']) / len(self.memory.times['batch_loop'])))"""
 
         with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
             f.write("Total episodes trained over: {} \n".format(len(self.episode_rewards)))

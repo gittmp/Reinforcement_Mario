@@ -39,12 +39,9 @@ def render_state(four_frames):
     plt.pause(0.001)
 
 
-def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path=None):
+def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stage=1, version=0, path=None):
 
-    if world == 2:
-        game = 'SuperMarioBros2-v0'
-    else:
-        game = 'SuperMarioBros-v0'
+    game = 'SuperMarioBros' + str(world) + '-' + str(stage) + '-v' + str(version)
 
     src = {
         'path': path,

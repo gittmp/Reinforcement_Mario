@@ -3,12 +3,9 @@ from agent4.network import *
 from agent4.environment import *
 
 
-def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path=None):
+def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stage=1, version=0, path=None, net=1):
 
-    if world == 2:
-        game = 'SuperMarioBros2-v0'
-    else:
-        game = 'SuperMarioBros-v0'
+    game = 'SuperMarioBros-' + str(world) + '-' + str(stage) + '-v' + str(version)
 
     with open(path + f'log4-{no_eps}.out', 'w') as f:
         f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, path={} \n".format(no_eps, world, game, training, plot, pretrained, path))
@@ -29,13 +26,14 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, path
         epsilon_floor=0.02,
         epsilon_decay=0.99,
         buffer_capacity=30000,
-        batch_size=32,
+        batch_size=64,
         update_target=5000,
         eps=no_eps,
         pretrained=pretrained,
         path=path,
         plot=plot,
-        training=training
+        training=training,
+        network=net
     )
 
     with open(path + f'log4-{no_eps}.out', 'a') as f:
@@ -55,6 +53,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Reinforcement Mario')
     parser.add_argument('--eps', dest='no_eps', type=int, help='The number of episodes to run through', required=True)
     parser.add_argument('--w', dest='world', type=int, help='The SMB world we wish to explore: [1, 2]', default=1)
+    parser.add_argument('--s', dest='stage', type=int,
+                        help='The stage of the SMB world we wish to explore: {1, 2, 3, 4}', default=1)
+    parser.add_argument('--v', dest='version', type=int,
+                        help='The ROM version of SMB we wish to explore: {0, 1, 2, 3}', default=0)
     parser.add_argument('-t', dest='training', action='store_true',
                         help='True = train agent over episodes played; False = just run without training',
                         default=False)
@@ -70,14 +72,16 @@ if __name__ == '__main__':
 
     ne = args.no_eps
     w = args.world
+    s = args.stage
+    v = args.version
     t = args.training
     p = args.plot
     ptd = args.pretrained
     ncc = args.ncc
 
     if ncc:
-        path = '../../ncc_tests/ncc_params4/'
+        path = '../../stage5/ncc_tests/ncc_params4/'
     else:
         path = 'params4/'
 
-    run(no_eps=ne, training=t, pretrained=ptd, plot=p, world=w, path=path)
+    run(no_eps=ne, training=t, pretrained=ptd, plot=p, world=w, stage=s, version=v, path=path)

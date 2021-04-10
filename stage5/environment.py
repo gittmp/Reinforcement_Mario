@@ -5,12 +5,34 @@ from nes_py.wrappers import JoypadSpace  # converting actions to correct JoyPad 
 from collections import deque  # for deque: insert(e_new) -> [e_new, e_0, ..., e_l-2] -> exit(e_l-1)
 import gym
 import cv2  # util for image manipulation
+import matplotlib.pyplot as plt
+import torch
 
 
 # Limiting action set combinations:
 # actions for the simple run right environment
 # right + B = run; hold A = jump higher; right + A + B = running jump;
 # B = throw fire; water A = bob; down = crouch; start = play/pause;
+RIGHT = [
+    ['NOOP'],
+    ['right'],
+    ['right', 'A'],
+    ['right', 'B'],
+    ['right', 'A', 'B']
+]
+
+# actions for very simple movement
+SIMPLE = [
+    ['NOOP'],
+    ['right'],
+    ['right', 'A'],
+    ['right', 'B'],
+    ['right', 'A', 'B'],
+    ['A'],
+    ['A', 'B'],
+    ['left']
+]
+
 # actions for more complex movement
 COMPLEX = [
     ['NOOP'],
@@ -27,23 +49,128 @@ COMPLEX = [
     ['up']
 ]
 
+# Custom action combination
+ACTION_SET = [
+    ['NOOP'],
+    ['right'],
+    ['right', 'A'],
+    ['right', 'B'],
+    ['right', 'A', 'B'],
+    ['A'],
+    ['left'],
+    ['left', 'A'],
+    ['down']
+]
+
+
+# plot function which plots durations the figure during training.
+def plot_durations(ep_rewards):
+    plt.figure(2)
+    plt.clf()
+    rewards = torch.tensor(ep_rewards, dtype=torch.float)
+    plt.title('Training')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.plot(rewards.numpy())
+
+    # plot 100 means of episodes
+    if len(rewards) >= 100:
+        means = rewards.unfold(0, 100, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(99), means))
+        plt.plot(means.numpy())
+
+    # update plots
+    plt.pause(0.001)
+
+
+# plot function to visualise downsampled slice of screen
+def render_state(four_frames):
+    single_image = four_frames.squeeze(0)[-1]
+    fig = plt.figure("Frame")
+    plt.imshow(single_image)
+    plt.title("Down-sampled image")
+    plt.draw()
+    plt.pause(0.001)
+
 
 # CLASSES / FUNCTIONS FOR WRAPPING ENVIRONMENT TO IMPROVE PERFORMANCE
 # Wrapper (for whole environment) which return only every `skip`-th frame, and adapts reward function
 class SkipAndReward(gym.Wrapper):
     # initialise no. frames to skip and frame buffer as deque length 2
-    def __init__(self, source, env=None, skip=4):
+    def __init__(self, env=None, source=None, version=1, skip=4):
         super(SkipAndReward, self).__init__(env)
         self.env = env
         self._skip = skip
         self.frame_buffer = deque(maxlen=2)
-        self.x_buffer = deque(maxlen=7)
+        self.x_buffer = deque(maxlen=8)
         self.reward_buffer = []
         self.prev_score = 0
         self.prev_status = 'small'
         self.prev_grad = 1
         self.zero_grad_counter = 0
         self.source = source
+        self.version = version
+
+    def x_gradient(self):
+        # LOOK INTO HOW THIS WORKS - EXPONENTIALLY DECAY THE GRADIENT 0 REWARD
+
+        entries = len(self.x_buffer)
+        gradient = 0
+
+        for i in range(1, entries):
+            x2 = self.x_buffer[i - 1]
+            x1 = self.x_buffer[i]
+            gradient += x1 - x2
+
+        gradient = round(gradient / entries)
+
+        if gradient == 0 and self.prev_grad == 0:
+            gradient = self.zero_grad_counter * -0.1
+            self.zero_grad_counter += 1
+        else:
+            self.prev_grad = gradient
+            self.zero_grad_counter = 0
+
+        return gradient
+
+    def modify_reward(self, rew, data):
+        # rew = v + c + d
+        # v = difference in x positions [-15, 15]; c = difference in the game clock [-15, 0]; d = death penalty {-15, 0}
+
+        # get average gradient of x change in last 4 moves
+        self.x_buffer.append(data['x_pos'])
+        x_reward = self.x_gradient()
+
+        score_reward = data['score'] - self.prev_score
+        self.prev_score = data['score']
+
+        if data['status'] == 'fireball':
+            status_reward = 10
+        elif data['status'] == 'tall':
+            status_reward = 10
+        else:
+            status_reward = 0
+
+        # if data['status'] == 'fireball' and self.prev_status != 'fireball':
+        #     status_reward = 10
+        #     self.prev_status = 'fireball'
+        # elif data['status'] == 'tall' and self.prev_status != 'tall':
+        #     status_reward = 10
+        #     self.prev_status = 'tall'
+        # else:
+        #     status_reward = 0
+        #     self.prev_status = 'small'
+
+        reward = round(x_reward + rew + score_reward + status_reward)
+
+        if reward > 15 or data['flag_get']:
+            reward = 15
+        if reward < -15:
+            reward = -15
+
+        self.reward_buffer.append(reward)
+
+        return reward
 
     # override step method to go forward `skip` frames after picking `action` in current frame
     def step(self, action):
@@ -54,6 +181,10 @@ class SkipAndReward(gym.Wrapper):
         # step through next `skip` frames of gameplay
         for _ in range(self._skip):
             state, reward, terminal, info = self.env.step(action)
+
+            if self.version == 2:
+                reward = self.modify_reward(reward, info)
+
             self.frame_buffer.append(state)
             total_reward += reward
 
@@ -110,11 +241,11 @@ class ProcessFrame(gym.ObservationWrapper):
         # convert to 1 channel greyscale image by taking 29.9% of R channel + 58.7% G + 11.4% B
         img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
 
-        # down-scale frame to 1 channel 84x110 pixel values using INTER AREA
+        # down-scale frame using INTER AREA
         # INTER AREA = resamples input image using pixel area relation
         resized_screen = cv2.resize(img, (self.new_shape[1], self.new_shape[1]), interpolation=cv2.INTER_AREA)
 
-        # reshape to square 84x84 numpy array (of 8-bit unsigned integers) by cutting off redundant height
+        # reshape to square numpy array (of 8-bit unsigned integers) by cutting off redundant height
         crop_factor = int((self.new_shape[1] - self.new_shape[0]) / 2)
         output = resized_screen[crop_factor:self.new_shape[1] - crop_factor, :]
         output = np.reshape(output, [self.new_shape[0], self.new_shape[1], self.new_shape[2]]).astype(np.uint8)
@@ -122,11 +253,11 @@ class ProcessFrame(gym.ObservationWrapper):
         return output
 
 
-# Wrapper (for observation space) converting the greyscale 84x84 image to a pytorch tensor with scaled values 0-1
-class ImageToPyTorch(gym.ObservationWrapper):
+# Wrapper (for observation space) converting the greyscale 84x84 image to a tensor with scaled values 0-1
+class MoveImage(gym.ObservationWrapper):
     # change obs space representation to reflect values in range 0-1 (shape also changed s.t. 3rd dimension is now 1st)
     def __init__(self, env):
-        super(ImageToPyTorch, self).__init__(env)
+        super(MoveImage, self).__init__(env)
         self.env = env
         old_shape = self.observation_space.shape
 
@@ -137,7 +268,8 @@ class ImageToPyTorch(gym.ObservationWrapper):
 
     # override observation method s.t. it returns in new shifted configuration
     def observation(self, observation):
-        return np.moveaxis(observation, 2, 0)
+        out = np.moveaxis(observation, 2, 0)
+        return out
 
 
 # observation buffer wrapper
@@ -148,8 +280,8 @@ class BufferWrapper(gym.ObservationWrapper):
         self.env = env
         self.dtype = dtype
         old_space = env.observation_space
-        self.observation_space = gym.spaces.Box(old_space.low.repeat(n_steps, axis=0),
-                                                old_space.high.repeat(n_steps, axis=0),
+        self.observation_space = gym.spaces.Box(old_space.low,
+                                                old_space.high,
                                                 dtype=dtype)
 
     # override reset method to also reset memory buffer to the same shape as obs low vals but all elements are 0
@@ -163,21 +295,23 @@ class BufferWrapper(gym.ObservationWrapper):
         self.buffer[-1] = observation
 
         # normalise elements to an np array of floats in the range 0-1 (by dividing through by max 8-bit pixel value)
-        output = np.array(self.buffer).astype(np.float32) / 255.0
+        output = np.array(observation).astype(np.float32) / 255.0
+
         return output
 
 
 # Function combining into pipeline of wrapper transforms
-def make_env(game, source):
+def make_env(game, source, version):
     # make env
     env = SMBGym.make(game)
 
     # apply pipeline
-    env = SkipAndReward(source, env)
-    env = ProcessFrame(env)
-    env = ImageToPyTorch(env)
-    env = BufferWrapper(env)
-    env = JoypadSpace(env, COMPLEX)
+    if version in [1, 2]:
+        env = SkipAndReward(env, source, version)
+        env = ProcessFrame(env)
+        env = MoveImage(env)
+        env = BufferWrapper(env)
+        env = JoypadSpace(env, ACTION_SET)
 
     return env
 

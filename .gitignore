@@ -1,7 +1,6 @@
-ncc_tests/
-
 stage1/DQL_classed_vids/
 stage3/params3/
+stage4/agent.zip
 
 stage4/agent2/params2/
 stage4/agent2/agent2.zip
@@ -20,3 +19,6 @@ stage4/agent4/agent4.zip
 stage4/agent4/main4.py
 stage4/agent4/network4.py
 stage4/agent4/environment4.py
+
+stage5/ncc_tests/
+stage5/params5/
