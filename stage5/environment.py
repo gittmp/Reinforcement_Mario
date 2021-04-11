@@ -103,7 +103,6 @@ class SkipAndReward(gym.Wrapper):
         self._skip = skip
         self.frame_buffer = deque(maxlen=2)
         self.x_buffer = deque(maxlen=8)
-        self.reward_buffer = []
         self.prev_score = 0
         self.prev_status = 'small'
         self.prev_grad = 1
@@ -168,8 +167,6 @@ class SkipAndReward(gym.Wrapper):
         if reward < -15:
             reward = -15
 
-        self.reward_buffer.append(reward)
-
         return reward
 
     # override step method to go forward `skip` frames after picking `action` in current frame
@@ -201,12 +198,6 @@ class SkipAndReward(gym.Wrapper):
 
     # override reset method so that it also resets the internal obs buffer to only hold the initial state
     def reset(self):
-        length = len(self.reward_buffer)
-        if length > 0:
-            with open(self.path + 'log.out', 'a') as f:
-                f.write("Mean reward over last {} time-steps = {:.1f}\n".format(length, sum(self.reward_buffer) / length))
-
-        self.reward_buffer = []
         self.frame_buffer.clear()
         self.x_buffer.clear()
         self.prev_score = 0
