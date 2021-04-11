@@ -1,6 +1,57 @@
 import argparse
-import os
-from main import run
+from network import *
+from environment import *
+
+
+def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stage=1, version=0, path=None, net=1, mem=1, env_vers=2):
+
+    game = 'SuperMarioBros-' + str(world) + '-' + str(stage) + '-v' + str(version)
+
+    with open(path + 'log.out', 'w') as f:
+        f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, path={} \n".format(no_eps, world, game, training, plot, pretrained, path))
+
+    env = make_env(game, path, env_vers)
+
+    agent = Agent(
+        state_shape=env.observation_space.shape,
+        action_n=env.action_space.n,
+        alpha=0.00025,
+        gamma=0.9,
+        epsilon_ceil=1.0,
+        epsilon_floor=0.02,
+        epsilon_decay=0.99,
+        buffer_capacity=30000,
+        batch_size=64,
+        update_target=5000,
+        path=path,
+        episodes=no_eps,
+        pretrained=pretrained,
+        plot=plot,
+        training=training,
+        network=net,
+        memory=mem
+    )
+
+    with open(path + 'log.out', 'a') as f:
+        f.write("\nStarting episodes...\n")
+
+    env.reset()
+    agent.run(env, no_eps)
+    env.close()
+
+    with open(path + 'log.out', 'a') as f:
+        f.write("\nTraining complete!\n")
+
+    agent.print_stats()
+
+
+def print_args(dest, arg_dict):
+    with open(dest + 'log.out', 'w') as f:
+        for item in arg_dict:
+            f.write(str(item) + ': ' + str(args[item]) + '\n\n')
+
+        f.write("\nStarting episodes...\n")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Reinforcement Mario')
@@ -36,8 +87,6 @@ if __name__ == '__main__':
     ncc = args.ncc
     network = args.network
 
-    print("args:", args)
-
     if ncc:
         path = 'ncc_tests/'
         dir_count = len(list(os.listdir(path)))
@@ -49,8 +98,6 @@ if __name__ == '__main__':
         path += 'test' + str(dir_count) + '/'
         os.mkdir(path)
 
-    with open(path + f'log-{no_eps}.out', 'w') as f:
-        f.write("\nStarting episodes...\n")
+    print_args(path, args.__dict__)
 
     run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, stage=stage, version=rom, path=path, net=network, mem=memory, env_vers=env_version)
-
