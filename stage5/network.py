@@ -168,14 +168,20 @@ class TreeStruct(object):
         batch = []
         indices = torch.empty(n, )
 
-        for i in range(n):
-            index = np.random.randint(0, self.size())
-            p_i_a = self.tree[index]
-            transition = self.buffer[index]
+        sum_priorities = sum(self.tree)
+        priority_distribution = [p / sum_priorities for p in self.tree]
 
+        inds = np.random.choice(self.size(), size=n, p=priority_distribution)
+
+        for i in range(n):
+            index = inds[i]
             indices[i] = index
-            priorities.append(p_i_a)
+
+            transition = self.buffer[index]
             batch.append([transition])
+
+            e = self.tree[index]
+            priorities.append(e)
 
         return indices, priorities, batch
 
@@ -242,19 +248,22 @@ class PrioritisedMemory:
         self.beta = min(1.0, self.beta + self.beta_increment)
 
         # uniformly sample transitions from each priority section
-        indices, priorities, batch = self.tree.get_leaves(self.batch_size)
+        indices, p_i_array, batch = self.tree.get_leaves(self.batch_size)
 
         weights = torch.empty(self.batch_size, 1).to(self.device)
         N = self.tree.size()
-        total_priority = sum(priorities)
-        min_p = min(priorities) / total_priority
-        max_w = pow((1/N) * (1/min_p), self.beta)
+        total_priority = sum(p_i_array)
 
         for i in range(self.batch_size):
             # w = (1 / N*p_i)^B -> normalise to [0, 1]
-            P_i = priorities[i] / total_priority
-            w_i = pow((N * P_i), -self.beta) / max_w
+            P_i = p_i_array[i] / total_priority
+            w_i = pow((N * P_i), -self.beta)
             weights[i, 0] = w_i
+
+        total_weight = sum([w[0] for w in weights])
+
+        for i in range(self.batch_size):
+            weights[i, 0] = weights[i, 0] / total_weight
 
         # convert batch to torch
         state_batch = torch.zeros(self.batch_size, *self.state_shape).to(self.device)
@@ -278,9 +287,8 @@ class PrioritisedMemory:
 
     def update(self, indices, errors):
         for index, error in zip(indices, errors):
-            p_i = float(error) + self.epsilon
-            p_i_a = pow(p_i, self.alpha)
-            self.tree.update(int(index), p_i_a)
+            p = pow(float(error) + self.epsilon, self.alpha)
+            self.tree.update(int(index), p)
 
 
 class Agent:
@@ -374,7 +382,6 @@ class Agent:
         # sample from memory
         if self.version == 1:
             indices, batch, weights = self.memory.sample()
-            print(weights)
             states = batch['states']
             actions = batch['actions']
             rewards = batch['rewards']
