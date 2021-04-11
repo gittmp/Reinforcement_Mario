@@ -203,7 +203,7 @@ class SkipAndReward(gym.Wrapper):
     def reset(self):
         length = len(self.reward_buffer)
         if length > 0:
-            with open(self.source["path"] + f'log4-{self.source["eps"]}.out', 'a') as f:
+            with open(self.source["path"] + f'log-{self.source["eps"]}.out', 'a') as f:
                 f.write("Mean reward over last {} time-steps = {:.1f}\n".format(length, sum(self.reward_buffer) / length))
 
         self.reward_buffer = []

@@ -108,13 +108,13 @@ class BasicMemory:
 
             self.buffer_capacity = self.buffer.maxlen
 
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("Loaded buffer from path = {}".format(self.path + "buffer.pkl"))
         else:
             self.buffer = deque(maxlen=buffer_capacity)
             self.buffer_capacity = buffer_capacity
 
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("Generated new buffer")
 
     def push(self, experience):
@@ -223,12 +223,12 @@ class PrioritisedMemory:
             with open(self.path + "buffer.pkl", "rb") as f:
                 self.tree = pickle.load(f)
 
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("Loaded memory tree from path = {} \n".format(self.path + "buffer.pkl"))
         else:
             self.tree = TreeStruct()
 
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("Generated new memory tree \n")
 
     def size(self):
@@ -238,41 +238,31 @@ class PrioritisedMemory:
         self.tree.add(experience)
 
     def sample(self):
-        # !! REFINE THIS FUNCTION AS TAKES THE MOST TIME !!
         # increment beta each time we sample, annealing towards 1
         self.beta = min(1.0, self.beta + self.beta_increment)
 
         # uniformly sample transitions from each priority section
-        start = time.time()
         indices, priorities, batch = self.tree.get_leaves(self.batch_size)
-        self.times['leaves'].append(time.time() - start)
 
-        start = time.time()
         weights = torch.empty(self.batch_size, 1).to(self.device)
         N = self.tree.size()
         total_priority = sum(priorities)
         min_p = min(priorities) / total_priority
         max_w = pow((1/N) * (1/min_p), self.beta)
-        self.times['weights_init'].append(time.time() - start)
 
-        start = time.time()
         for i in range(self.batch_size):
             # w = (1 / N*p_i)^B -> normalise to [0, 1]
             P_i = priorities[i] / total_priority
             w_i = pow((N * P_i), -self.beta) / max_w
             weights[i, 0] = w_i
-        self.times['weights_loop'].append(time.time() - start)
 
         # convert batch to torch
-        start = time.time()
         state_batch = torch.zeros(self.batch_size, *self.state_shape).to(self.device)
         action_batch = torch.zeros(self.batch_size, 1).to(self.device)
         reward_batch = torch.zeros(self.batch_size, 1).to(self.device)
         successor_batch = torch.zeros(self.batch_size, *self.state_shape).to(self.device)
         terminal_batch = torch.zeros(self.batch_size, 1).to(self.device)
-        self.times['batch_init'].append(time.time() - start)
 
-        start = time.time()
         for i in range(self.batch_size):
             state_batch[i], action_batch[i], reward_batch[i],  successor_batch[i], terminal_batch[i] = batch[i][0]
 
@@ -283,7 +273,6 @@ class PrioritisedMemory:
             'successors': successor_batch,
             'terminals': terminal_batch
         }
-        self.times['batch_loop'].append(time.time() - start)
 
         return indices.to(self.device), batch, weights
 
@@ -323,7 +312,11 @@ class Agent:
 
         self.train_step = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.loss = nn.SmoothL1Loss(reduction='none').to(self.device)
+
+        if self.version == 1:
+            self.loss = nn.SmoothL1Loss(reduction='none').to(self.device)
+        else:  # self.version == 0
+            self.loss = nn.SmoothL1Loss().to(self.device)
 
         if network == 0:
             self.policy_network = Network0(state_shape, action_n).to(self.device)
@@ -336,19 +329,19 @@ class Agent:
             self.policy_network.load_state_dict(torch.load(self.path + "policy_network.pt", map_location=torch.device(self.device)))
             self.policy_network.load_state_dict(torch.load(self.path + "target_network.pt", map_location=torch.device(self.device)))
 
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("\nLoaded policy network from path = {} \n".format(self.path + "policy_network.pt"))
                 f.write("Loaded target network from path = {} \n".format(self.path + "target_network.pt"))
 
             with open(self.path + "episode_rewards.pkl", "rb") as f:
                 self.episode_rewards = pickle.load(f)
 
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("Loaded rewards over {} episodes from path = {} \n".format(len(self.episode_rewards), self.path))
         else:
             self.episode_rewards = []
 
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("\nGenerated randomly initiated new networks \n")
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
@@ -465,17 +458,17 @@ class Agent:
             if self.training:
                 self.episode_rewards.append(info['score'])
 
-                with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                     f.write("\nGame score after termination = {} \n".format(info['score']))
 
                 if ep % max(1, math.floor(eps / 4)) == 0:
-                    with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+                    with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                         f.write("automatically saving params4 at episode {} \n".format(ep))
 
                     self.save()
 
         if self.training:
-            with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+            with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
                 f.write("\nSaving final parameters! \n")
             self.save()
 
@@ -493,7 +486,7 @@ class Agent:
         print("Total time looping through batch: {}".format(sum(self.memory.times['batch_loop'])))
         print("Average time looping through batch: {}".format(sum(self.memory.times['batch_loop']) / len(self.memory.times['batch_loop'])))"""
 
-        with open(self.path + f'log4-{self.n_eps}.out', 'a') as f:
+        with open(self.path + f'log-{self.n_eps}.out', 'a') as f:
             f.write("Total episodes trained over: {} \n".format(len(self.episode_rewards)))
 
             sections = min(10, self.n_eps)

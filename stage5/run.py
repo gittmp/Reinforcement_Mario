@@ -40,13 +40,16 @@ if __name__ == '__main__':
 
     if ncc:
         path = 'ncc_tests/'
-        dir_count = len(list(filter(os.path.isdir, os.listdir(path))))
-        path = os.path.join(path, 'test' + str(dir_count))
+        dir_count = len(list(os.listdir(path)))
+        path += 'test' + str(dir_count) + '/'
         os.mkdir(path)
     else:
         path = 'params5/'
+        dir_count = len(list(os.listdir(path)))
+        path += 'test' + str(dir_count) + '/'
+        os.mkdir(path)
 
-    with open(path + f'log4-{no_eps}.out', 'w') as f:
+    with open(path + f'log-{no_eps}.out', 'w') as f:
         f.write("\nStarting episodes...\n")
 
     run(no_eps=no_eps, training=training, pretrained=pretrained, plot=plot, world=world, stage=stage, version=rom, path=path, net=network, mem=memory, env_vers=env_version)

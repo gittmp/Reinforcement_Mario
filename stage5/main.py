@@ -7,7 +7,7 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stag
 
     game = 'SuperMarioBros-' + str(world) + '-' + str(stage) + '-v' + str(version)
 
-    with open(path + f'log4-{no_eps}.out', 'w') as f:
+    with open(path + f'log-{no_eps}.out', 'w') as f:
         f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, path={} \n".format(no_eps, world, game, training, plot, pretrained, path))
 
     src = {
@@ -36,14 +36,14 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stag
         memory=mem
     )
 
-    with open(path + f'log4-{no_eps}.out', 'a') as f:
+    with open(path + f'log-{no_eps}.out', 'a') as f:
         f.write("\nStarting episodes...\n")
 
     env.reset()
     agent.run(env, no_eps)
     env.close()
 
-    with open(path + f'log4-{no_eps}.out', 'a') as f:
+    with open(path + f'log-{no_eps}.out', 'a') as f:
         f.write("\nTraining complete!\n")
 
     agent.print_stats()
