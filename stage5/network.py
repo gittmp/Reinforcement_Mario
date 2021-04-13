@@ -14,7 +14,6 @@ def check_files(path):
     b = os.path.isfile(path + "policy_network.pt")
     b = b and os.path.isfile(path + "target_network.pt")
     b = b and os.path.isfile(path + "episode_rewards.pkl")
-    # b = b and os.path.isfile(path + "buffer.pkl")
 
     return b
 
@@ -22,6 +21,7 @@ def check_files(path):
 class Network0(nn.Module):
     def __init__(self, in_features, n_actions):
         super(Network0, self).__init__()
+        print("Network 0 selected")
 
         # VERSION: architecture from 'Playing Atari with Deep Reinforcement Learning'
         self.conv = nn.Sequential(
@@ -52,10 +52,11 @@ class Network0(nn.Module):
 class Network1(nn.Module):
     def __init__(self, in_features, n_actions):
         super(Network1, self).__init__()
+        print("Network 1 selected")
+
         self.in_features = in_features
 
-        # VERSION: architecture from 'DDDQN (Double Dueling Deep Q Learning with Prioritized Experience Replay)'
-
+        # VERSION: adapted architecture
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_channels=in_features[0], out_channels=32, kernel_size=(8, 8), stride=(4, 4)),
             nn.ReLU()
@@ -93,6 +94,7 @@ class Network1(nn.Module):
 
 class BasicMemory:
     def __init__(self, state_shape, buffer_capacity, batch_size, pretrained, device, path, eps):
+        print("Basic memory selected")
 
         self.batch_size = batch_size
         self.pretrained = pretrained
@@ -101,21 +103,8 @@ class BasicMemory:
         self.path = path
         self.n_eps = eps
 
-        # if self.pretrained:
-        #     with open(path + "buffer.pkl", "rb") as f:
-        #         self.buffer = pickle.load(f)
-        #
-        #     self.buffer_capacity = self.buffer.maxlen
-        #
-        #     with open(self.path + 'log.out', 'a') as f:
-        #         f.write("Loaded buffer from path = {}".format(self.path + "buffer.pkl"))
-        # else:
-
         self.buffer = deque(maxlen=buffer_capacity)
         self.buffer_capacity = buffer_capacity
-
-        with open(self.path + 'log.out', 'a') as f:
-            f.write("Generated new buffer")
 
     def push(self, experience):
         self.buffer.append(experience)
@@ -136,11 +125,15 @@ class BasicMemory:
             successor_batch[i] = succ
             terminal_batch[i] = term
 
-        return state_batch.to(self.device), \
-               action_batch.to(self.device), \
-               reward_batch.to(self.device), \
-               successor_batch.to(self.device), \
-               terminal_batch.to(self.device)
+        batch = {
+            'states': state_batch.to(self.device),
+            'actions': action_batch.to(self.device),
+            'rewards': reward_batch.to(self.device),
+            'successors': successor_batch.to(self.device),
+            'terminals': terminal_batch.to(self.device)
+        }
+
+        return batch
 
     def size(self):
         return len(self.buffer)
@@ -148,7 +141,6 @@ class BasicMemory:
 
 class TreeStruct(object):
     def __init__(self, maxlen=100000):
-        # specify the max number of leaves holding priorities, and buffer holding experiences
         self.priority_limit = 1.0
         self.maxlen = maxlen
         self.buffer = deque(maxlen=maxlen)
@@ -156,7 +148,6 @@ class TreeStruct(object):
 
     def add(self, data):
         maximum = self.max_priority()
-
         self.buffer.append(data)
         self.tree.append(maximum)
 
@@ -205,6 +196,7 @@ class TreeStruct(object):
 
 class PrioritisedMemory:
     def __init__(self, shape, device, eps, batch=64, pretrained=False, path=None):
+        print("Prioritised memory selected")
         self.epsilon = 0.02
         self.alpha = 0.6
         self.beta = 0.4
@@ -216,19 +208,7 @@ class PrioritisedMemory:
         self.device = device
         self.pretrained = pretrained
         self.path = path
-
-        # if self.pretrained:
-        #     with open(self.path + "buffer.pkl", "rb") as f:
-        #         self.tree = pickle.load(f)
-        #
-        #     with open(self.path + 'log.out', 'a') as f:
-        #         f.write("Loaded memory tree from path = {} \n".format(self.path + "buffer.pkl"))
-        # else:
-
         self.tree = TreeStruct()
-
-        with open(self.path + 'log.out', 'a') as f:
-            f.write("Generated new memory tree \n")
 
     def size(self):
         return len(self.tree.tree)
@@ -241,7 +221,7 @@ class PrioritisedMemory:
         self.beta = min(1.0, self.beta + self.beta_increment)
 
         # uniformly sample transitions from each priority section
-        indices, p_i_array, batch = self.tree.get_leaves(self.batch_size)
+        indices, p_i_array, experience = self.tree.get_leaves(self.batch_size)
 
         weights = torch.empty(self.batch_size, 1).to(self.device)
         N = self.tree.size()
@@ -266,7 +246,7 @@ class PrioritisedMemory:
         terminal_batch = torch.zeros(self.batch_size, 1).to(self.device)
 
         for i in range(self.batch_size):
-            state_batch[i], action_batch[i], reward_batch[i],  successor_batch[i], terminal_batch[i] = batch[i][0]
+            state_batch[i], action_batch[i], reward_batch[i],  successor_batch[i], terminal_batch[i] = experience[i][0]
 
         batch = {
             'states': state_batch,
@@ -289,11 +269,11 @@ class Agent:
                  alpha, gamma, epsilon_ceil, epsilon_floor, epsilon_decay,
                  buffer_capacity, batch_size, update_target, path, episodes,
                  pretrained=False, plot=False, training=False,
-                 network=1, memory=1):
+                 network=1, memory=2):
 
         self.n_eps = episodes
         self.path = path
-        self.version = memory
+        self.mem_version = memory
         self.timestep_array = []
         self.intrinsic_rewards = []
 
@@ -316,9 +296,9 @@ class Agent:
         self.train_step = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        if self.version == 1:
+        if self.mem_version == 2:
             self.loss = nn.SmoothL1Loss(reduction='none').to(self.device)
-        else:  # self.version == 0
+        else:  # self.version == 0 or 1
             self.loss = nn.SmoothL1Loss().to(self.device)
 
         if network == 0:
@@ -349,10 +329,10 @@ class Agent:
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
-        if self.version == 1:
+        if self.mem_version == 2:
             self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, self.path)
-        else:  # self.version == 0
-            self.memory = BasicMemory(state_shape, buffer_capacity, batch_size, pretrained, self.device, self.path, self.n_eps)
+        elif self.mem_version == 1:
+            self.memory = BasicMemory(self.state_shape, buffer_capacity, self.batch_size, self.pretrained, self.device, self.path, self.n_eps)
 
     def step(self, state):
         if random.random() < self.epsilon:
@@ -364,26 +344,42 @@ class Agent:
     def target_update(self):
         self.target_network.load_state_dict(self.policy_network.state_dict())
 
-    def train(self, exp, ep):
+    def train(self, exp):
         self.train_step += 1
-        self.memory.push(exp)
-
-        if self.memory.size() < self.batch_size * 100:
-            print("\rCan't train on episode {} - MEMORY TOO SMALL: size = {}, target = {}".format(ep, self.memory.size(), self.batch_size * 100), end='', flush=True)
-            return
-
-        print("\rTraining on step {} in episode {}".format(self.train_step, ep), end='', flush=True)
 
         # sample from memory
-        if self.version == 1:
+        if self.mem_version == 2:
+            self.memory.push(exp)
+
+            if self.memory.size() < self.batch_size * 100:
+                return
+
             indices, batch, weights = self.memory.sample()
             states = batch['states']
             actions = batch['actions']
             rewards = batch['rewards']
             successors = batch['successors']
             terminals = batch['terminals']
-        else:  # self.version == 0
-            states, actions, rewards, successors, terminals = self.memory.sample()
+        elif self.mem_version == 1:
+            self.memory.push(exp)
+
+            if self.memory.size() < self.batch_size * 100:
+                return
+
+            batch = self.memory.sample()
+            states = batch['states']
+            actions = batch['actions']
+            rewards = batch['rewards']
+            successors = batch['successors']
+            terminals = batch['terminals']
+        else:  # self.mem_version == 0
+            states = torch.zeros(1, *self.state_shape).to(self.device)
+            actions = torch.zeros(1, 1).to(self.device)
+            rewards = torch.zeros(1, 1).to(self.device)
+            successors = torch.zeros(1, *self.state_shape).to(self.device)
+            terminals = torch.zeros(1, 1).to(self.device)
+
+            states[0], actions[0], rewards[0], successors[0], terminals[0] = exp
 
         self.optimiser.zero_grad()
 
@@ -393,7 +389,7 @@ class Agent:
         # TD error = TD target - prev. q-value
         q_vals = self.policy_network(states).gather(1, actions.long()).to(self.device)
 
-        if self.version == 1:
+        if self.mem_version == 2:
             td_errors = torch.abs(targets - q_vals)
             self.memory.update(indices, td_errors)
             loss = (weights * self.loss(q_vals, targets)).mean()
@@ -410,12 +406,6 @@ class Agent:
     def save(self):
         with open(self.path + "episode_rewards.pkl", "wb") as f:
             pickle.dump(self.extrinsic_rewards, f)
-
-        # with open(self.path + "buffer.pkl", "wb") as f:
-        #     if self.version == 1:
-        #         pickle.dump(self.memory.tree, f)
-        #     else:  # self.version == 0
-        #         pickle.dump(self.memory.buffer, f)
 
         torch.save(self.policy_network.state_dict(), self.path + "policy_network.pt")
         torch.save(self.target_network.state_dict(), self.path + "target_network.pt")
@@ -456,7 +446,7 @@ class Agent:
                         torch.Tensor([int(terminal)]).unsqueeze(0).float()
                     )
 
-                    self.train(experience, ep)
+                    self.train(experience)
 
                 state = successor
 

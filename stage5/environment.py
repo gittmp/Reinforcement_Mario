@@ -97,22 +97,20 @@ def render_state(four_frames):
 # Wrapper (for whole environment) which return only every `skip`-th frame, and adapts reward function
 class SkipAndReward(gym.Wrapper):
     # initialise no. frames to skip and frame buffer as deque length 2
-    def __init__(self, env=None, path=None, version=1, skip=4):
+    def __init__(self, env=None, path=None, version=2, skip=4):
         super(SkipAndReward, self).__init__(env)
+
         self.env = env
         self._skip = skip
         self.frame_buffer = deque(maxlen=2)
         self.x_buffer = deque(maxlen=8)
         self.prev_score = 0
-        self.prev_status = 'small'
         self.prev_grad = 1
         self.zero_grad_counter = 0
         self.path = path
         self.version = version
 
     def x_gradient(self):
-        # LOOK INTO HOW THIS WORKS - EXPONENTIALLY DECAY THE GRADIENT 0 REWARD
-
         entries = len(self.x_buffer)
         gradient = 0
 
@@ -150,16 +148,6 @@ class SkipAndReward(gym.Wrapper):
         else:
             status_reward = 0
 
-        # if data['status'] == 'fireball' and self.prev_status != 'fireball':
-        #     status_reward = 10
-        #     self.prev_status = 'fireball'
-        # elif data['status'] == 'tall' and self.prev_status != 'tall':
-        #     status_reward = 10
-        #     self.prev_status = 'tall'
-        # else:
-        #     status_reward = 0
-        #     self.prev_status = 'small'
-
         reward = round(x_reward + rew + score_reward + status_reward)
 
         if reward > 15 or data['flag_get']:
@@ -171,37 +159,39 @@ class SkipAndReward(gym.Wrapper):
 
     # override step method to go forward `skip` frames after picking `action` in current frame
     def step(self, action):
-        total_reward = 0.0
-        terminal = None
-        info = -1
+        if self.version == 0:
+            frame, total_reward, terminal, info = self.env.step(action)
+        else:  # self.version in [1, 2]
+            total_reward = 0.0
+            terminal = None
+            info = -1
 
-        # step through next `skip` frames of gameplay
-        for _ in range(self._skip):
-            state, reward, terminal, info = self.env.step(action)
+            # step through next `skip` frames of gameplay
+            for _ in range(self._skip):
+                state, reward, terminal, info = self.env.step(action)
 
-            if self.version == 2:
-                reward = self.modify_reward(reward, info)
+                if self.version == 2:
+                    reward = self.modify_reward(reward, info)
 
-            self.frame_buffer.append(state)
-            total_reward += reward
+                self.frame_buffer.append(state)
+                total_reward += reward
 
-            # if reach the end of an episode, escape and leave obs buffer containing only the last 2 frames seen
-            if terminal:
-                break
+                # if reach the end of an episode, escape and leave obs buffer containing only the last 2 frames seen
+                if terminal:
+                    break
 
-        # stack elements of obs buffer = create new array containing the two states in the obs buffer
-        # then take the max of this, to return the maximal state (of the last two remaining in the buffer)
-        max_frame = np.max(np.stack(self.frame_buffer), axis=0)
+            # stack elements of obs buffer = create new array containing the two states in the obs buffer
+            # then take the max of this, to return the maximal state (of the last two remaining in the buffer)
+            frame = np.max(np.stack(self.frame_buffer), axis=0)
 
         # return this maximum frame, the total reward generated over the `skip` frames, and whether the game has ended
-        return max_frame, total_reward, terminal, info
+        return frame, total_reward, terminal, info
 
     # override reset method so that it also resets the internal obs buffer to only hold the initial state
     def reset(self):
         self.frame_buffer.clear()
         self.x_buffer.clear()
         self.prev_score = 0
-        self.prev_status = 'small'
 
         state = self.env.reset()
         self.frame_buffer.append(state)
@@ -212,17 +202,25 @@ class SkipAndReward(gym.Wrapper):
 # Wrapper (for observation space) to down-sample frame to numpy array of 84x84 greyscale pixels
 class ProcessFrame(gym.ObservationWrapper):
     # represent the observation space as a box of 84x84 pixel values with only 1 colour channel (greyscale)
-    def __init__(self, env=None, new_shape=(104, 140, 1), old_shape=(240, 256, 3)):
+    def __init__(self, env=None, version=2, new_shape=(104, 140, 1), old_shape=(240, 256, 3)):
         super(ProcessFrame, self).__init__(env)
         self.env = env
+        self.version = version
         self.old_shape = [old_shape[0], old_shape[1], old_shape[2]]
         self.new_shape = new_shape
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=new_shape, dtype=np.uint8)
+
+        if version == 0:
+            self.observation_space = gym.spaces.Box(low=0, high=255, shape=old_shape, dtype=np.uint8)
+        else:  # self.version in [1, 2]
+            self.observation_space = gym.spaces.Box(low=0, high=255, shape=new_shape, dtype=np.uint8)
 
     # override observation method s.t. it returns the down-sampled version
     def observation(self, obs):
-        # generate 84x84 pixel frame
-        return ProcessFrame.process(self, obs)
+        if self.version == 0:
+            return np.reshape(obs, self.old_shape).astype(np.uint8)
+        else:  # self.version in [1, 2]
+            # generate 84x84 pixel frame
+            return ProcessFrame.process(self, obs)
 
     # form static method bound to the class itself to handle the process of generating the down-sampled frames
     def process(self, frame):
@@ -247,15 +245,21 @@ class ProcessFrame(gym.ObservationWrapper):
 # Wrapper (for observation space) converting the greyscale 84x84 image to a tensor with scaled values 0-1
 class MoveImage(gym.ObservationWrapper):
     # change obs space representation to reflect values in range 0-1 (shape also changed s.t. 3rd dimension is now 1st)
-    def __init__(self, env):
+    def __init__(self, env, version=2):
         super(MoveImage, self).__init__(env)
         self.env = env
         old_shape = self.observation_space.shape
 
-        self.observation_space = gym.spaces.Box(low=0.0,
-                                                high=1.0,
-                                                shape=(old_shape[-1], old_shape[0], old_shape[1]),
-                                                dtype=np.float32)
+        if version == 0:
+            self.observation_space = gym.spaces.Box(low=0.0,
+                                                    high=255.0,
+                                                    shape=(old_shape[-1], old_shape[0], old_shape[1]),
+                                                    dtype=np.float32)
+        else:  # self.version in [1, 2]
+            self.observation_space = gym.spaces.Box(low=0.0,
+                                                    high=1.0,
+                                                    shape=(old_shape[-1], old_shape[0], old_shape[1]),
+                                                    dtype=np.float32)
 
     # override observation method s.t. it returns in new shifted configuration
     def observation(self, observation):
@@ -266,14 +270,15 @@ class MoveImage(gym.ObservationWrapper):
 # observation buffer wrapper
 class BufferWrapper(gym.ObservationWrapper):
     # redefine obs space box to represent the fact its holding 4 frames (4 identical low vals, 4 identical high vals)
-    def __init__(self, env, n_steps=4, dtype=np.float32):
+    def __init__(self, env, version=2):
         super(BufferWrapper, self).__init__(env)
         self.env = env
-        self.dtype = dtype
+        self.version = version
         old_space = env.observation_space
+        self.dtype = np.float32
         self.observation_space = gym.spaces.Box(old_space.low,
                                                 old_space.high,
-                                                dtype=dtype)
+                                                dtype=self.dtype)
 
     # override reset method to also reset memory buffer to the same shape as obs low vals but all elements are 0
     def reset(self):
@@ -282,26 +287,31 @@ class BufferWrapper(gym.ObservationWrapper):
 
     # move the elements of memory buffer 1 index forward (removing 1st), and set the last item as the new observation
     def observation(self, observation):
-        self.buffer[:-1] = self.buffer[1:]
-        self.buffer[-1] = observation
+        if self.version == 0:
+            return np.array(observation).astype(np.float32)
+        else:  # self.version in [1, 2]
+            self.buffer[:-1] = self.buffer[1:]
+            self.buffer[-1] = observation
 
-        # normalise elements to an np array of floats in the range 0-1 (by dividing through by max 8-bit pixel value)
-        output = np.array(observation).astype(np.float32) / 255.0
-
-        return output
+            # normalise elements to an np array of floats in the range 0-1 (by dividing through by max 8-bit pixel value)
+            return np.array(observation).astype(np.float32) / 255.0
 
 
 # Function combining into pipeline of wrapper transforms
 def make_env(game, path, version):
+    print("Version {} of environment representation selected (0 = none, 1 = state & action, 2 = reward)".format(version))
+
     # make env
     env = SMBGym.make(game)
 
     # apply pipeline
+    env = SkipAndReward(env, path, version)
+    env = ProcessFrame(env, version)
+    env = MoveImage(env, version)
+    env = BufferWrapper(env, version)
+
+    # if not version 0, transform action space
     if version in [1, 2]:
-        env = SkipAndReward(env, path, version)
-        env = ProcessFrame(env)
-        env = MoveImage(env)
-        env = BufferWrapper(env)
         env = JoypadSpace(env, ACTION_SET)
 
     return env
