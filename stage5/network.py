@@ -7,6 +7,7 @@ import math
 import os
 from collections import deque
 from tqdm import tqdm
+import time
 # from environment import plot_durations
 
 
@@ -276,6 +277,8 @@ class Agent:
         self.mem_version = memory
         self.timestep_array = []
         self.intrinsic_rewards = []
+        self.distance_array = []
+        self.training_times = []
 
         self.state_shape = state_shape
         self.action_n = action_n
@@ -412,9 +415,6 @@ class Agent:
 
     def run(self, env, eps):
 
-        self.timestep_array = []
-        self.intrinsic_rewards = []
-
         for ep in tqdm(range(eps)):
 
             state = env.reset()
@@ -438,6 +438,8 @@ class Agent:
                 total_reward += reward
 
                 if self.training:
+                    start = time.time()
+
                     experience = (
                         state.float(),
                         action.float(),
@@ -445,8 +447,9 @@ class Agent:
                         successor.float(),
                         torch.Tensor([int(terminal)]).unsqueeze(0).float()
                     )
-
                     self.train(experience)
+
+                    self.training_times.append(time.time() - start)
 
                 state = successor
 
@@ -454,6 +457,7 @@ class Agent:
                     self.timestep_array.append(timestep)
                     self.intrinsic_rewards.append(total_reward)
                     self.extrinsic_rewards.append(info['score'])
+                    self.distance_array.append(info['x_pos'])
                     break
 
             if self.training:
@@ -494,6 +498,7 @@ class Agent:
             # print table of intrinsic rewards (manufactured reward signal) over session
             f.write("\n\nAverage intrinsic rewards over past {} episodes: \n".format(len(self.intrinsic_rewards)))
             f.write("EPISODE RANGE                AV. INTRINSIC REWARD \n")
+            section_size = math.floor(len(self.intrinsic_rewards) / sections)
 
             for i in range(sections):
                 low = i * section_size
@@ -509,6 +514,7 @@ class Agent:
             # print table of episode lengths over session
             f.write("\n\nAverage episode length (no. timesteps) over past {} episodes: \n".format(len(self.timestep_array)))
             f.write("EPISODE RANGE                AV. LENGTH \n")
+            section_size = math.floor(len(self.timestep_array) / sections)
 
             for i in range(sections):
                 low = i * section_size
@@ -520,3 +526,22 @@ class Agent:
                 else:
                     av = sum(self.timestep_array[low:high]) / (high - low)
                     f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
+
+            # print table of x distance walked over session
+            f.write("\n\nAverage x distance travelled over past {} episodes: \n".format(len(self.distance_array)))
+            f.write("EPISODE RANGE                AV. DISTANCE \n")
+            section_size = math.floor(len(self.distance_array) / sections)
+
+            for i in range(sections):
+                low = i * section_size
+                high = (i + 1) * section_size
+
+                if i == sections - 1:
+                    av = sum(self.distance_array[low:]) / (len(self.distance_array) - low)
+                    f.write("[{}, {}) {} {} \n".format(low, len(self.distance_array), " " * (25 - 2 - len(str(low)) - len(str(len(self.distance_array)))), av))
+                else:
+                    av = sum(self.distance_array[low:high]) / (high - low)
+                    f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
+
+            # print table of training times for each timestep over session
+            f.write("\n\nAverage training time per time-step over past {} time-steps: {}".format(len(self.training_times), sum(self.training_times) / len(self.distance_array)))

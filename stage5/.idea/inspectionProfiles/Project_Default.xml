@@ -1,0 +1,25 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="QL2DQL_def" />
+          <option value="processed_mario_dqn" />
+          <option value="processed_mario_wrappers" />
+          <option value="mario_network" />
+          <option value="retro" />
+          <option value="Implementations.stage3.agent2.main.stage3" />
+          <option value="Implementations.stage4.main.*" />
+          <option value="Implementations.stage3.agent3.main.stage3" />
+          <option value="Implementations.stage3.agent3.main.Agent" />
+          <option value="Implementations.stage3.agent3.main.make_env" />
+          <option value="Implementations.stage3.agent2.main.*" />
+          <option value="Implementations.stage4.agent4.main.*" />
+          <option value="Implementations.stage4.agent3.main.*" />
+          <option value="Implementations.stage4.agent2.main.*" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
