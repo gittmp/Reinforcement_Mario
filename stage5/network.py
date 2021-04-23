@@ -14,7 +14,7 @@ import time
 def check_files(path):
     b = os.path.isfile(path + "policy_network.pt")
     b = b and os.path.isfile(path + "target_network.pt")
-    b = b and os.path.isfile(path + "episode_rewards.pkl")
+    b = b and os.path.isfile(path + "extrinsic_rewards.pkl")
 
     return b
 
@@ -22,7 +22,6 @@ def check_files(path):
 class Network0(nn.Module):
     def __init__(self, in_features, n_actions):
         super(Network0, self).__init__()
-        print("Network 0 selected")
 
         # VERSION: architecture from 'Playing Atari with Deep Reinforcement Learning'
         self.conv = nn.Sequential(
@@ -53,8 +52,6 @@ class Network0(nn.Module):
 class Network1(nn.Module):
     def __init__(self, in_features, n_actions):
         super(Network1, self).__init__()
-        print("Network 1 selected")
-
         self.in_features = in_features
 
         # VERSION: adapted architecture
@@ -95,8 +92,6 @@ class Network1(nn.Module):
 
 class BasicMemory:
     def __init__(self, state_shape, buffer_capacity, batch_size, pretrained, device, path, eps):
-        print("Basic memory selected")
-
         self.batch_size = batch_size
         self.pretrained = pretrained
         self.state_shape = state_shape
@@ -197,7 +192,6 @@ class TreeStruct(object):
 
 class PrioritisedMemory:
     def __init__(self, shape, device, eps, batch=64, pretrained=False, path=None):
-        print("Prioritised memory selected")
         self.epsilon = 0.02
         self.alpha = 0.6
         self.beta = 0.4
@@ -275,9 +269,6 @@ class Agent:
         self.n_eps = episodes
         self.path = path
         self.mem_version = memory
-        self.timestep_array = []
-        self.intrinsic_rewards = []
-        self.distance_array = []
         self.training_times = []
 
         self.state_shape = state_shape
@@ -319,16 +310,21 @@ class Agent:
                 f.write("\nLoaded policy network from path = {} \n".format(self.path + "policy_network.pt"))
                 f.write("Loaded target network from path = {} \n".format(self.path + "target_network.pt"))
 
-            with open(self.path + "episode_rewards.pkl", "rb") as f:
+            with open(self.path + "extrinsic_rewards.pkl", "rb") as f:
                 self.extrinsic_rewards = pickle.load(f)
+
+            with open(self.path + "intrinsic_rewards.pkl", "rb") as f:
+                self.intrinsic_rewards = pickle.load(f)
+
+            with open(self.path + "distance_array.pkl", "rb") as f:
+                self.distance_array = pickle.load(f)
 
             with open(self.path + 'log.out', 'a') as f:
                 f.write("Loaded rewards over {} episodes from path = {} \n".format(len(self.extrinsic_rewards), self.path))
         else:
             self.extrinsic_rewards = []
-
-            with open(self.path + 'log.out', 'a') as f:
-                f.write("\nGenerated randomly initiated new networks \n")
+            self.intrinsic_rewards = []
+            self.distance_array = []
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
@@ -407,11 +403,17 @@ class Agent:
             self.target_update()
 
     def save(self):
-        with open(self.path + "episode_rewards.pkl", "wb") as f:
-            pickle.dump(self.extrinsic_rewards, f)
-
         torch.save(self.policy_network.state_dict(), self.path + "policy_network.pt")
         torch.save(self.target_network.state_dict(), self.path + "target_network.pt")
+
+        with open(self.path + "extrinsic_rewards.pkl", "wb") as f:
+            pickle.dump(self.extrinsic_rewards, f)
+
+        with open(self.path + "intrinsic_rewards.pkl", "wb") as f:
+            pickle.dump(self.intrinsic_rewards, f)
+
+        with open(self.path + "distance_array.pkl", "wb") as f:
+            pickle.dump(self.distance_array, f)
 
     def run(self, env, eps):
 
@@ -454,18 +456,10 @@ class Agent:
                 state = successor
 
                 if terminal:
-                    self.timestep_array.append(timestep)
                     self.intrinsic_rewards.append(total_reward)
                     self.extrinsic_rewards.append(info['score'])
                     self.distance_array.append(info['x_pos'])
                     break
-
-            if self.training:
-                if ep % max(1, math.floor(eps / 4)) == 0:
-                    with open(self.path + 'log.out', 'a') as f:
-                        f.write("automatically saving params4 at episode {} \n".format(ep))
-
-                    self.save()
 
         if self.training:
             with open(self.path + 'log.out', 'a') as f:
@@ -509,22 +503,6 @@ class Agent:
                     f.write("[{}, {}) {} {} \n".format(low, len(self.intrinsic_rewards), " " * (25 - 2 - len(str(low)) - len(str(len(self.intrinsic_rewards)))), av))
                 else:
                     av = sum(self.intrinsic_rewards[low:high]) / (high - low)
-                    f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
-
-            # print table of episode lengths over session
-            f.write("\n\nAverage episode length (no. timesteps) over past {} episodes: \n".format(len(self.timestep_array)))
-            f.write("EPISODE RANGE                AV. LENGTH \n")
-            section_size = math.floor(len(self.timestep_array) / sections)
-
-            for i in range(sections):
-                low = i * section_size
-                high = (i + 1) * section_size
-
-                if i == sections - 1:
-                    av = sum(self.timestep_array[low:]) / (len(self.timestep_array) - low)
-                    f.write("[{}, {}) {} {} \n".format(low, len(self.timestep_array), " " * (25 - 2 - len(str(low)) - len(str(len(self.timestep_array)))), av))
-                else:
-                    av = sum(self.timestep_array[low:high]) / (high - low)
                     f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
 
             # print table of x distance walked over session

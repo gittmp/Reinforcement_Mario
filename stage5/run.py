@@ -7,9 +7,6 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stag
 
     game = 'SuperMarioBros-' + str(world) + '-' + str(stage) + '-v' + str(version)
 
-    with open(path + 'log.out', 'w') as f:
-        f.write("Parameters:\n     no_eps={}, \n     world={}, game={}, \n     training={}, plot={}, \n     pretrained={}, path={} \n".format(no_eps, world, game, training, plot, pretrained, path))
-
     env = make_env(game, path, env_vers)
 
     agent = Agent(
@@ -32,9 +29,6 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stag
         memory=mem
     )
 
-    with open(path + 'log.out', 'a') as f:
-        f.write("\nStarting episodes...\n")
-
     env.reset()
     agent.run(env, no_eps)
     env.close()
@@ -48,8 +42,12 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stag
 def print_args(dest, arg_dict):
     with open(dest + 'log.out', 'w') as f:
         for item in arg_dict:
-            f.write(str(item) + ': ' + str(arg_dict[item]) + '\n\n')
+            parameter = str(item) + ': ' + str(arg_dict[item])
+            print(parameter)
+            f.write(parameter + '\n')
 
+        print(f"path: {dest}\n")
+        f.write(f"path: {dest}")
         f.write("\nStarting episodes...\n")
 
 
@@ -57,7 +55,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Reinforcement Mario')
     parser.add_argument('--N', dest='no_eps', type=int, help='The number of episodes to run through', required=True)
     parser.add_argument('--nwk', dest='network', type=int, help='Network version to utilise: {0, 1}', default=1)
-    parser.add_argument('--m', dest='memory', type=int, help='Memory implemnetation to use: {0 = No replay, 1 = basic replay, 2 = PER}', default=1)
+    parser.add_argument('--mem', dest='memory', type=int, help='Memory implemnetation to use: {0 = No replay, 1 = basic replay, 2 = PER}', default=1)
     parser.add_argument('--w', dest='world', type=int, help='The SMB world we wish to explore: {1, 2, 3, 4, 5, 6, 7, 8}', default=1)
     parser.add_argument('--s', dest='stage', type=int, help='The stage of the SMB world we wish to explore: {1, 2, 3, 4}', default=1)
     parser.add_argument('--v', dest='rom', type=int, help='The ROM version of SMB we wish to explore: {0, 1, 2, 3}', default=0)

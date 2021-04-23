@@ -121,8 +121,8 @@ class SkipAndReward(gym.Wrapper):
 
         gradient = round(gradient / entries)
 
-        if gradient == 0 and self.prev_grad == 0:
-            gradient = self.zero_grad_counter * -0.1
+        if gradient <= 0 and self.prev_grad <= 0:
+            gradient = self.zero_grad_counter * -0.1 + gradient
             self.zero_grad_counter += 1
         else:
             self.prev_grad = gradient
@@ -299,8 +299,6 @@ class BufferWrapper(gym.ObservationWrapper):
 
 # Function combining into pipeline of wrapper transforms
 def make_env(game, path, version):
-    print("Version {} of environment representation selected (0 = none, 1 = state & action, 2 = reward)".format(version))
-
     # make env
     env = SMBGym.make(game)
 
