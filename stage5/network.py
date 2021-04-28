@@ -5,10 +5,11 @@ import torch.nn as nn
 import random
 import math
 import os
+import cv2
 from collections import deque
 from tqdm import tqdm
 import time
-# from environment import plot_durations
+from environment import render_state
 
 
 def check_files(path):
@@ -194,8 +195,8 @@ class PrioritisedMemory:
     def __init__(self, shape, device, eps, batch=64, pretrained=False, path=None):
         self.epsilon = 0.02
         self.alpha = 0.6
-        self.beta = 0.4
-        self.beta_increment = 0.001
+        self.beta = 0.6
+        self.beta_increment = 0.01
         self.priority_limit = 1.0
         self.batch_size = batch
         self.state_shape = shape
@@ -264,11 +265,12 @@ class Agent:
                  alpha, gamma, epsilon_ceil, epsilon_floor, epsilon_decay,
                  buffer_capacity, batch_size, update_target, path, episodes,
                  pretrained=False, plot=False, training=False,
-                 network=1, memory=2):
+                 network=1, memory=2, env_version=2):
 
         self.n_eps = episodes
         self.path = path
         self.mem_version = memory
+        self.env_version = env_version
         self.training_times = []
 
         self.state_shape = state_shape
@@ -304,7 +306,7 @@ class Agent:
 
         if self.pretrained:
             self.policy_network.load_state_dict(torch.load(self.path + "policy_network.pt", map_location=torch.device(self.device)))
-            self.policy_network.load_state_dict(torch.load(self.path + "target_network.pt", map_location=torch.device(self.device)))
+            self.target_network.load_state_dict(torch.load(self.path + "target_network.pt", map_location=torch.device(self.device)))
 
             with open(self.path + 'log.out', 'a') as f:
                 f.write("\nLoaded policy network from path = {} \n".format(self.path + "policy_network.pt"))
@@ -313,8 +315,9 @@ class Agent:
             with open(self.path + "extrinsic_rewards.pkl", "rb") as f:
                 self.extrinsic_rewards = pickle.load(f)
 
-            with open(self.path + "intrinsic_rewards.pkl", "rb") as f:
-                self.intrinsic_rewards = pickle.load(f)
+            if env_version == 2:
+                with open(self.path + "intrinsic_rewards.pkl", "rb") as f:
+                    self.intrinsic_rewards = pickle.load(f)
 
             with open(self.path + "distance_array.pkl", "rb") as f:
                 self.distance_array = pickle.load(f)
@@ -323,8 +326,10 @@ class Agent:
                 f.write("Loaded rewards over {} episodes from path = {} \n".format(len(self.extrinsic_rewards), self.path))
         else:
             self.extrinsic_rewards = []
-            self.intrinsic_rewards = []
             self.distance_array = []
+
+            if env_version == 2:
+                self.intrinsic_rewards = []
 
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
@@ -380,8 +385,6 @@ class Agent:
 
             states[0], actions[0], rewards[0], successors[0], terminals[0] = exp
 
-        self.optimiser.zero_grad()
-
         # TD target = reward + discount factor * successor q-value
         targets = (rewards + torch.mul((self.gamma * self.target_network(successors).max(1).values.unsqueeze(1)), 1 - terminals)).to(self.device)
 
@@ -392,9 +395,10 @@ class Agent:
             td_errors = torch.abs(targets - q_vals)
             self.memory.update(indices, td_errors)
             loss = (weights * self.loss(q_vals, targets)).mean()
-        else:  # self.version == 0
+        else:  # self.version == 0 or 1
             loss = self.loss(q_vals, targets)
 
+        self.optimiser.zero_grad()
         loss.backward()
         self.optimiser.step()
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
@@ -409,8 +413,9 @@ class Agent:
         with open(self.path + "extrinsic_rewards.pkl", "wb") as f:
             pickle.dump(self.extrinsic_rewards, f)
 
-        with open(self.path + "intrinsic_rewards.pkl", "wb") as f:
-            pickle.dump(self.intrinsic_rewards, f)
+        if self.env_version == 2:
+            with open(self.path + "intrinsic_rewards.pkl", "wb") as f:
+                pickle.dump(self.intrinsic_rewards, f)
 
         with open(self.path + "distance_array.pkl", "wb") as f:
             pickle.dump(self.distance_array, f)
@@ -420,6 +425,8 @@ class Agent:
         for ep in tqdm(range(eps)):
 
             state = env.reset()
+            render_state(state)
+
             state = torch.Tensor([state])
             timestep = 0
             total_reward = 0
@@ -456,7 +463,9 @@ class Agent:
                 state = successor
 
                 if terminal:
-                    self.intrinsic_rewards.append(total_reward)
+                    if self.env_version == 2:
+                        self.intrinsic_rewards.append(total_reward)
+
                     self.extrinsic_rewards.append(info['score'])
                     self.distance_array.append(info['x_pos'])
                     break
@@ -489,21 +498,22 @@ class Agent:
                     av = sum(self.extrinsic_rewards[low:high]) / (high - low)
                     f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
 
-            # print table of intrinsic rewards (manufactured reward signal) over session
-            f.write("\n\nAverage intrinsic rewards over past {} episodes: \n".format(len(self.intrinsic_rewards)))
-            f.write("EPISODE RANGE                AV. INTRINSIC REWARD \n")
-            section_size = math.floor(len(self.intrinsic_rewards) / sections)
+            if self.env_version == 2:
+                # print table of intrinsic rewards (manufactured reward signal) over session
+                f.write("\n\nAverage intrinsic rewards over past {} episodes: \n".format(len(self.intrinsic_rewards)))
+                f.write("EPISODE RANGE                AV. INTRINSIC REWARD \n")
+                section_size = math.floor(len(self.intrinsic_rewards) / sections)
 
-            for i in range(sections):
-                low = i * section_size
-                high = (i + 1) * section_size
+                for i in range(sections):
+                    low = i * section_size
+                    high = (i + 1) * section_size
 
-                if i == sections - 1:
-                    av = sum(self.intrinsic_rewards[low:]) / (len(self.intrinsic_rewards) - low)
-                    f.write("[{}, {}) {} {} \n".format(low, len(self.intrinsic_rewards), " " * (25 - 2 - len(str(low)) - len(str(len(self.intrinsic_rewards)))), av))
-                else:
-                    av = sum(self.intrinsic_rewards[low:high]) / (high - low)
-                    f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
+                    if i == sections - 1:
+                        av = sum(self.intrinsic_rewards[low:]) / (len(self.intrinsic_rewards) - low)
+                        f.write("[{}, {}) {} {} \n".format(low, len(self.intrinsic_rewards), " " * (25 - 2 - len(str(low)) - len(str(len(self.intrinsic_rewards)))), av))
+                    else:
+                        av = sum(self.intrinsic_rewards[low:high]) / (high - low)
+                        f.write("[{}, {}) {} {} \n".format(low, high, " " * (25 - 2 - len(str(low)) - len(str(high))), av))
 
             # print table of x distance walked over session
             f.write("\n\nAverage x distance travelled over past {} episodes: \n".format(len(self.distance_array)))

@@ -26,7 +26,8 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stag
         plot=plot,
         training=training,
         network=net,
-        memory=mem
+        memory=mem,
+        env_version=env_version
     )
 
     env.reset()
@@ -65,12 +66,10 @@ if __name__ == '__main__':
                         default=False)
     parser.add_argument('-plot', dest='plot', action='store_true',
                         help='True = plot total reward after each completed episode', default=False)
-    parser.add_argument('-ptd', dest='pretrained', action='store_true',
+    parser.add_argument('-p', dest='pretrained', action='store_true',
                         help='True = agent has been pretrained with parameter files available; False = start agent from scratch',
                         default=False)
-    parser.add_argument('-ncc', dest='ncc', action='store_true',
-                        help='True = load pretrained data from NCC parameters; False = load from local parameters',
-                        default=False)
+    parser.add_argument('--path', dest='path', type=str, help='Path to pretrained parameters from working directory', default='')
     args = parser.parse_args()
 
     no_eps = args.no_eps
@@ -82,19 +81,23 @@ if __name__ == '__main__':
     training = args.training
     plot = args.plot
     pretrained = args.pretrained
-    ncc = args.ncc
+    path = args.path
     network = args.network
 
-    if ncc:
-        path = 'ncc_tests/'
-        dir_count = len(list(os.listdir(path)))
-        path += 'test' + str(dir_count) + '/'
-        os.mkdir(path)
-    else:
+    if pretrained:
+        if path == '':
+            print("Must specify a path if agent pretrained")
+            exit(1)
+        else:
+            print(f"Loading pretrained agent from path: {path}\n")
+
+    if path == '':
         path = 'params5/'
         dir_count = len(list(os.listdir(path)))
         path += 'test' + str(dir_count) + '/'
         os.mkdir(path)
+    elif path[-1] != '/':
+        path += '/'
 
     print_args(path, args.__dict__)
 

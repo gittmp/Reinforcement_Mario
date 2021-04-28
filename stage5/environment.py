@@ -219,7 +219,7 @@ class ProcessFrame(gym.ObservationWrapper):
         if self.version == 0:
             return np.reshape(obs, self.old_shape).astype(np.uint8)
         else:  # self.version in [1, 2]
-            # generate 84x84 pixel frame
+            # generate new pixel frame
             return ProcessFrame.process(self, obs)
 
     # form static method bound to the class itself to handle the process of generating the down-sampled frames
