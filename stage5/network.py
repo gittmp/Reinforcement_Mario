@@ -11,6 +11,10 @@ from tqdm import tqdm
 import time
 from environment import render_state
 
+import heapq
+from itertools import count
+tiebreaker = count()
+
 
 def check_files(path):
     b = os.path.isfile(path + "policy_network.pt")
@@ -191,6 +195,67 @@ class TreeStruct(object):
         return sum(self.tree)
 
 
+class PER:
+    """ Prioritized replay memory using binary heap """
+    def __init__(self, shape, device, max_size=10000):
+        self.max_size = max_size
+        self.memory = []
+        self.state_shape = shape
+        self.device = device
+        self.default = -10.0
+        self.epsilon = 0.02
+        self.alpha = 0.6
+
+    def push(self, transition):
+        if self.size() == 0:
+            err = self.default
+        else:
+            err = heapq.nsmallest(1, self.memory)[0][0]
+        heapq.heappush(self.memory, (-err, next(tiebreaker), transition))
+
+        if self.size() > self.max_size:
+            self.memory = self.memory[:-1]
+
+        heapq.heapify(self.memory)
+
+    def sample(self, n=64):
+        errors = []
+        all_transitions = []
+        state_batch = torch.zeros(n, *self.state_shape).to(self.device)
+        action_batch = torch.zeros(n, 1).to(self.device)
+        reward_batch = torch.zeros(n, 1).to(self.device)
+        successor_batch = torch.zeros(n, *self.state_shape).to(self.device)
+        terminal_batch = torch.zeros(n, 1).to(self.device)
+
+        for i in range(n):
+            trans = heapq.heappop(self.memory)
+            errors.append(trans[0])
+            all_transitions.append(trans[2])
+            state_batch[i], action_batch[i], reward_batch[i], successor_batch[i], terminal_batch[i] = trans[2]
+
+        batch = {
+            'states': state_batch,
+            'actions': action_batch,
+            'rewards': reward_batch,
+            'successors': successor_batch,
+            'terminals': terminal_batch
+        }
+
+        return batch, errors, all_transitions
+
+    def update(self, batch, errors):
+        for b, e in zip(batch, errors):
+            p = pow(float(e) + self.epsilon, self.alpha)
+            t = (-p, next(tiebreaker), b)
+            heapq.heappush(self.memory, t)
+
+    def size(self):
+        return len(self.memory)
+
+    def full_enough(self):
+        return True if self.size() >= (64 * 100) else False
+
+
 class PrioritisedMemory:
     def __init__(self, shape, device, eps, batch=64, pretrained=False, path=None):
         self.epsilon = 0.02
@@ -334,11 +399,14 @@ class Agent:
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
         if self.mem_version == 2:
-            self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, self.path)
+            self.memory = PER(self.state_shape, self.device, 10000)
+            # self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, self.path)
         elif self.mem_version == 1:
             self.memory = BasicMemory(self.state_shape, buffer_capacity, self.batch_size, self.pretrained, self.device, self.path, self.n_eps)
 
     def step(self, state):
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
+
         if random.random() < self.epsilon:
             return torch.tensor([[random.randrange(self.action_n)]])
         else:
@@ -353,12 +421,15 @@ class Agent:
 
         # sample from memory
         if self.mem_version == 2:
+
             self.memory.push(exp)
 
-            if self.memory.size() < self.batch_size * 100:
+            # if self.memory.size() < self.batch_size * 100:
+            if not self.memory.full_enough():
                 return
 
-            indices, batch, weights = self.memory.sample()
+            batch, weights, transitions = self.memory.sample()
+
             states = batch['states']
             actions = batch['actions']
             rewards = batch['rewards']
@@ -393,15 +464,14 @@ class Agent:
 
         if self.mem_version == 2:
             td_errors = torch.abs(targets - q_vals)
-            self.memory.update(indices, td_errors)
+            self.memory.update(transitions, td_errors)
             loss = (weights * self.loss(q_vals, targets)).mean()
         else:  # self.version == 0 or 1
-            loss = self.loss(q_vals, targets)
+            loss = self.loss(q_vals, targets).mean()
 
         self.optimiser.zero_grad()
         loss.backward()
         self.optimiser.step()
-        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
 
         if self.train_step % self.update_target == 0:
             self.target_update()
@@ -425,7 +495,6 @@ class Agent:
         for ep in tqdm(range(eps)):
 
             state = env.reset()
-            render_state(state)
 
             state = torch.Tensor([state])
             timestep = 0
