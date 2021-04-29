@@ -5,11 +5,10 @@ import torch.nn as nn
 import random
 import math
 import os
-import cv2
 from collections import deque
 from tqdm import tqdm
 import time
-from environment import render_state
+# from environment import render_state
 
 
 def check_files(path):
@@ -195,8 +194,8 @@ class PrioritisedMemory:
     def __init__(self, shape, device, eps, batch=64, pretrained=False, path=None):
         self.epsilon = 0.02
         self.alpha = 0.6
-        self.beta = 0.6
-        self.beta_increment = 0.01
+        self.tau = 0.4
+        self.tau_increment = 0.001
         self.priority_limit = 1.0
         self.batch_size = batch
         self.state_shape = shape
@@ -213,8 +212,9 @@ class PrioritisedMemory:
         self.tree.add(experience)
 
     def sample(self):
-        # increment beta each time we sample, annealing towards 1
-        self.beta = min(1.0, self.beta + self.beta_increment)
+        # increment tau each time we sample, annealing towards 1
+        self.tau = min(1.0, self.tau + self.tau_increment)
+        print(f"tau = {self.tau}")
 
         # uniformly sample transitions from each priority section
         indices, p_i_array, experience = self.tree.get_leaves(self.batch_size)
@@ -226,7 +226,7 @@ class PrioritisedMemory:
         for i in range(self.batch_size):
             # w = (1 / N*p_i)^B -> normalise to [0, 1]
             P_i = p_i_array[i] / total_priority
-            w_i = pow((N * P_i), -self.beta)
+            w_i = pow((N * P_i), -self.tau)
             weights[i, 0] = w_i
 
         total_weight = sum([w[0] for w in weights])
@@ -339,6 +339,8 @@ class Agent:
             self.memory = BasicMemory(self.state_shape, buffer_capacity, self.batch_size, self.pretrained, self.device, self.path, self.n_eps)
 
     def step(self, state):
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
+
         if random.random() < self.epsilon:
             return torch.tensor([[random.randrange(self.action_n)]])
         else:
@@ -401,7 +403,6 @@ class Agent:
         self.optimiser.zero_grad()
         loss.backward()
         self.optimiser.step()
-        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_floor)
 
         if self.train_step % self.update_target == 0:
             self.target_update()
@@ -425,8 +426,6 @@ class Agent:
         for ep in tqdm(range(eps)):
 
             state = env.reset()
-            render_state(state)
-
             state = torch.Tensor([state])
             timestep = 0
             total_reward = 0
