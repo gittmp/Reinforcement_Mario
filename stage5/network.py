@@ -5,15 +5,10 @@ import torch.nn as nn
 import random
 import math
 import os
-import cv2
 from collections import deque
 from tqdm import tqdm
 import time
-from environment import render_state
-
-import heapq
-from itertools import count
-tiebreaker = count()
+# from environment import render_state
 
 
 def check_files(path):
@@ -96,7 +91,7 @@ class Network1(nn.Module):
 
 
 class BasicMemory:
-    def __init__(self, state_shape, buffer_capacity, batch_size, pretrained, device, path, eps):
+    def __init__(self, state_shape, maxlen, batch_size, pretrained, device, path, eps):
         self.batch_size = batch_size
         self.pretrained = pretrained
         self.state_shape = state_shape
@@ -104,8 +99,8 @@ class BasicMemory:
         self.path = path
         self.n_eps = eps
 
-        self.buffer = deque(maxlen=buffer_capacity)
-        self.buffer_capacity = buffer_capacity
+        self.buffer = deque(maxlen=maxlen)
+        self.maxlen = maxlen
 
     def push(self, experience):
         self.buffer.append(experience)
@@ -140,174 +135,136 @@ class BasicMemory:
         return len(self.buffer)
 
 
-class TreeStruct(object):
-    def __init__(self, maxlen=100000):
-        self.priority_limit = 1.0
-        self.maxlen = maxlen
-        self.buffer = deque(maxlen=maxlen)
-        self.tree = deque(maxlen=maxlen)
-
-    def add(self, data):
-        maximum = self.max_priority()
-        self.buffer.append(data)
-        self.tree.append(maximum)
-
-    def update(self, i, e):
-        self.tree[i] = e
-
-    def get_leaves(self, n):
-        priorities = []
-        batch = []
-        indices = torch.empty(n, )
-
-        sum_priorities = sum(self.tree)
-        priority_distribution = [p / sum_priorities for p in self.tree]
-
-        inds = np.random.choice(self.size(), size=n, p=priority_distribution)
-
-        for i in range(n):
-            index = inds[i]
-            indices[i] = index
-
-            transition = self.buffer[index]
-            batch.append([transition])
-
-            e = self.tree[index]
-            priorities.append(e)
-
-        return indices, priorities, batch
-
-    def max_priority(self):
-        if len(self.tree) > 0:
-            m = max(self.tree)
-
-            if m == 0:
-                m = self.priority_limit
-        else:
-            m = self.priority_limit
-
-        return m
-
-    def size(self):
-        return len(self.tree)
-
-    def total_priority(self):
-        return sum(self.tree)
-
-
-class PER:
-    """ Prioritized replay memory using binary heap """
-    def __init__(self, shape, device, max_size=10000):
-        self.max_size = max_size
-        self.memory = []
-        self.state_shape = shape
+class SumTreeStructure:
+    def __init__(self, maxlen, device):
         self.device = device
-        self.default = -10.0
-        self.epsilon = 0.02
-        self.alpha = 0.6
+        self.maxlen = maxlen
+        self.tree = torch.zeros(2 * maxlen - 1).to(self.device)
+        self.buffer = np.zeros(maxlen, dtype=object)
+        self.length = 0
+        self.pointer = 0
 
-    def push(self, transition):
-        if self.size() == 0:
-            err = self.default
+    # update value at internal nodes until new total held at root
+    def propagate(self, ind, delta):
+        parent = (ind - 1) // 2
+        self.tree[parent] += delta
+        if parent != 0:
+            self.propagate(parent, delta)
+
+    # return an index of a sampled element, given a random input value in current section
+    def _retrieve(self, idx, s):
+        left = 2 * idx + 1
+        right = left + 1
+
+        if left >= len(self.tree):
+            return idx
+
+        if s <= float(self.tree[left]):
+            return self._retrieve(left, s)
         else:
-            err = heapq.nsmallest(1, self.memory)[0][0]
-        heapq.heappush(self.memory, (-err, next(tiebreaker), transition))
+            return self._retrieve(right, s - float(self.tree[left]))
 
-        if self.size() > self.max_size:
-            self.memory = self.memory[:-1]
+    # get priority and sample
+    def get(self, l, h):
+        exp = 0
+        count = 0
+        while exp == 0 and count < 64:
+            count += 1
+            v = random.uniform(l, h)
+            idx = self._retrieve(0, v)
+            dataIdx = idx - self.maxlen + 1
+            exp = self.buffer[dataIdx]
 
-        heapq.heapify(self.memory)
+        if count == 64:
+            print("CANT FIND EXPERIENCE TO SAMPLE")
+            exit(1)
 
-    def sample(self, n=64):
-        errors = []
-        all_transitions = []
-        state_batch = torch.zeros(n, *self.state_shape).to(self.device)
-        action_batch = torch.zeros(n, 1).to(self.device)
-        reward_batch = torch.zeros(n, 1).to(self.device)
-        successor_batch = torch.zeros(n, *self.state_shape).to(self.device)
-        terminal_batch = torch.zeros(n, 1).to(self.device)
+        return idx, float(self.tree[idx]), exp
 
-        for i in range(n):
-            trans = heapq.heappop(self.memory)
-            errors.append(trans[0])
-            all_transitions.append(trans[2])
-            state_batch[i], action_batch[i], reward_batch[i], successor_batch[i], terminal_batch[i] = trans[2]
+    def total(self):
+        return float(self.tree[0])
 
-        batch = {
-            'states': state_batch,
-            'actions': action_batch,
-            'rewards': reward_batch,
-            'successors': successor_batch,
-            'terminals': terminal_batch
-        }
+    def full(self):
+        return self.length >= self.maxlen
 
-        return batch, errors, all_transitions
+    # a new experience with its associated priority
+    def push(self, pri, exp):
+        ind = self.pointer + self.maxlen - 1
 
-    def update(self, batch, errors):
-        for b, e in zip(batch, errors):
-            p = pow(float(e) + self.epsilon, self.alpha)
-            t = (-p, next(tiebreaker), b)
-            heapq.heappush(self.memory, t)
+        if type(exp) != tuple or len(exp) != 5:
+            print(f"tree push - ERRONEOUS EXPERIENCE ADDED: \n{exp}")
+            exit(1)
 
-    def size(self):
-        return len(self.memory)
+        self.buffer[self.pointer] = exp
+        self.update(ind, pri)
 
-    def full_enough(self):
-        return True if self.size() >= (64 * 100) else False
+        self.pointer += 1
+        if self.pointer >= self.maxlen:
+            self.pointer = 0
+
+        if self.length < self.maxlen:
+            self.length += 1
+
+    # update priority associated with some index
+    def update(self, ind, pri):
+        delta = pri - self.tree[ind]
+        self.tree[ind] = pri
+        self.propagate(ind, delta)
 
 
 class PrioritisedMemory:
-    def __init__(self, shape, device, eps, batch=64, pretrained=False, path=None):
-        self.epsilon = 0.02
-        self.alpha = 0.6
-        self.beta = 0.6
-        self.beta_increment = 0.01
-        self.priority_limit = 1.0
-        self.batch_size = batch
-        self.state_shape = shape
-        self.n_eps = eps
-        self.device = device
-        self.pretrained = pretrained
-        self.path = path
-        self.tree = TreeStruct()
+    def __init__(self, maxlen, shape, dev):
+        self.tree = SumTreeStructure(maxlen, dev)
+        self.maxlen = maxlen
+        self.state = shape
+        self.device = dev
 
-    def size(self):
-        return len(self.tree.tree)
+        self.epsilon = 0.01
+        self.alpha = 0.8
+        self.tau = 0.3
+        self.tau_inc = 0.0005
 
-    def push(self, experience):
-        self.tree.add(experience)
+    def push(self, error, sample):
+        p = pow(float(torch.abs(error)) + self.epsilon, self.alpha)
 
-    def sample(self):
-        # increment beta each time we sample, annealing towards 1
-        self.beta = min(1.0, self.beta + self.beta_increment)
+        if type(sample) != tuple or len(sample) != 5:
+            print(f"PER push - ERRONEOUS EXPERIENCE ADDED: \n{sample}")
+            exit(1)
 
-        # uniformly sample transitions from each priority section
-        indices, p_i_array, experience = self.tree.get_leaves(self.batch_size)
+        self.tree.push(p, sample)
 
-        weights = torch.empty(self.batch_size, 1).to(self.device)
-        N = self.tree.size()
-        total_priority = sum(p_i_array)
+    def sample(self, n):
+        segment = self.tree.total() / n
+        indices = torch.zeros(n).to(self.device)
+        priorities = torch.zeros(n).to(self.device)
 
-        for i in range(self.batch_size):
-            # w = (1 / N*p_i)^B -> normalise to [0, 1]
-            P_i = p_i_array[i] / total_priority
-            w_i = pow((N * P_i), -self.beta)
-            weights[i, 0] = w_i
-
-        total_weight = sum([w[0] for w in weights])
-
-        for i in range(self.batch_size):
-            weights[i, 0] = weights[i, 0] / total_weight
+        self.tau = np.min([1.0, self.tau + self.tau_inc])
 
         # convert batch to torch
-        state_batch = torch.zeros(self.batch_size, *self.state_shape).to(self.device)
-        action_batch = torch.zeros(self.batch_size, 1).to(self.device)
-        reward_batch = torch.zeros(self.batch_size, 1).to(self.device)
-        successor_batch = torch.zeros(self.batch_size, *self.state_shape).to(self.device)
-        terminal_batch = torch.zeros(self.batch_size, 1).to(self.device)
+        state_batch = torch.zeros(n, *self.state).to(self.device)
+        action_batch = torch.zeros(n, 1).to(self.device)
+        reward_batch = torch.zeros(n, 1).to(self.device)
+        successor_batch = torch.zeros(n, *self.state).to(self.device)
+        terminal_batch = torch.zeros(n, 1).to(self.device)
 
-        for i in range(self.batch_size):
-            state_batch[i], action_batch[i], reward_batch[i],  successor_batch[i], terminal_batch[i] = experience[i][0]
+        for i in range(n):
+            low = segment * i
+            high = segment * (i + 1)
+
+            index, priority, experience = self.tree.get(low, high)
+            priorities[i] = priority
+            indices[i] = index
+
+            if type(experience) != tuple or len(experience) != 5:
+                print(f"sample - ERRONEOUS EXPERIENCE ADDED: \n{experience}")
+                exit(1)
+
+            state_batch[i], action_batch[i], reward_batch[i], successor_batch[i], terminal_batch[i] = experience
+
+        sampling_probabilities = torch.div(priorities, self.tree.total())
+        weights = torch.mul(sampling_probabilities, float(self.tree.length)).to(self.device)
+        weights = torch.pow(weights, -self.tau)
+        weights = torch.div(weights, weights.max())
 
         batch = {
             'states': state_batch,
@@ -317,12 +274,12 @@ class PrioritisedMemory:
             'terminals': terminal_batch
         }
 
-        return indices.to(self.device), batch, weights
+        return batch, indices, weights
 
     def update(self, indices, errors):
-        for index, error in zip(indices, errors):
-            p = pow(float(error) + self.epsilon, self.alpha)
-            self.tree.update(int(index), p)
+        for i, e in zip(indices, errors):
+            p = pow(float(torch.abs(e)) + self.epsilon, self.alpha)
+            self.tree.update(int(i), p)
 
 
 class Agent:
@@ -348,7 +305,6 @@ class Agent:
         self.epsilon_decay = epsilon_decay
         self.update_target = update_target
         self.pretrained = pretrained and check_files(self.path)
-        self.memory_capacity = buffer_capacity
         self.batch_size = batch_size
 
         self.plot = plot
@@ -399,8 +355,7 @@ class Agent:
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
         if self.mem_version == 2:
-            self.memory = PER(self.state_shape, self.device, 10000)
-            # self.memory = PrioritisedMemory(self.state_shape, self.device, self.n_eps, self.batch_size, self.pretrained, self.path)
+            self.memory = PrioritisedMemory(1000000, self.state_shape, self.device)
         elif self.mem_version == 1:
             self.memory = BasicMemory(self.state_shape, buffer_capacity, self.batch_size, self.pretrained, self.device, self.path, self.n_eps)
 
@@ -421,14 +376,22 @@ class Agent:
 
         # sample from memory
         if self.mem_version == 2:
+            S = torch.zeros(1, *self.state_shape).to(self.device)
+            A = torch.zeros(1, 1).to(self.device)
+            R = torch.zeros(1, 1).to(self.device)
+            Succ = torch.zeros(1, *self.state_shape).to(self.device)
+            T = torch.zeros(1, 1).to(self.device)
+            S[0], A[0], R[0], Succ[0], T[0] = exp
 
-            self.memory.push(exp)
+            target = (R + torch.mul((self.gamma * self.target_network(Succ).max(1).values.unsqueeze(1)), 1 - T)).to(self.device)
+            q_val = self.policy_network(S).gather(1, A.long()).to(self.device)
+            td_error = torch.abs(target - q_val)
+            self.memory.push(td_error, exp)
 
-            # if self.memory.size() < self.batch_size * 100:
-            if not self.memory.full_enough():
+            if not self.memory.full():
                 return
 
-            batch, weights, transitions = self.memory.sample()
+            batch, indices, weights = self.memory.sample(self.batch_size)
 
             states = batch['states']
             actions = batch['actions']
@@ -464,10 +427,12 @@ class Agent:
 
         if self.mem_version == 2:
             td_errors = torch.abs(targets - q_vals)
-            self.memory.update(transitions, td_errors)
-            loss = (weights * self.loss(q_vals, targets)).mean()
+            self.memory.update(indices, td_errors)
+
+            loss = self.loss(q_vals, targets)
+            loss = torch.mul(loss, weights).mean()
         else:  # self.version == 0 or 1
-            loss = self.loss(q_vals, targets).mean()
+            loss = self.loss(q_vals, targets)
 
         self.optimiser.zero_grad()
         loss.backward()
