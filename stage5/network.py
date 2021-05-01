@@ -233,6 +233,9 @@ class PrioritisedMemory:
 
         self.tree.push(p, sample)
 
+    def full(self):
+        return self.tree.full()
+
     def sample(self, n):
         segment = self.tree.total() / n
         indices = torch.zeros(n).to(self.device)
@@ -355,7 +358,7 @@ class Agent:
         self.optimiser = torch.optim.Adam(self.policy_network.parameters(), lr=alpha)
 
         if self.mem_version == 2:
-            self.memory = PrioritisedMemory(1000000, self.state_shape, self.device)
+            self.memory = PrioritisedMemory(100000, self.state_shape, self.device)
         elif self.mem_version == 1:
             self.memory = BasicMemory(self.state_shape, buffer_capacity, self.batch_size, self.pretrained, self.device, self.path, self.n_eps)
 
