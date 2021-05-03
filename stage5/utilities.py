@@ -1,10 +1,9 @@
 import matplotlib.pyplot as plt
-import torch
 import os
 
 
-# utilities for environment.py
-# Limiting action set combinations:
+# UTILITIES FOR ENVIRONMENT.PY
+# action space reductions
 # actions for the simple run right environment
 # right + B = run; hold A = jump higher; right + A + B = running jump;
 # B = throw fire; water A = bob; down = crouch; start = play/pause;
@@ -35,37 +34,18 @@ ACTION_SET2 = [
 ]
 
 
-# utilities for agent.py
-# plot function which plots durations the figure during training.
-def plot_durations(ep_rewards):
-    plt.figure(2)
-    plt.clf()
-    rewards = torch.tensor(ep_rewards, dtype=torch.float)
-    plt.title('Training')
-    plt.xlabel('Episode')
-    plt.ylabel('Reward')
-    plt.plot(rewards.numpy())
-
-    # plot 100 means of episodes
-    if len(rewards) >= 100:
-        means = rewards.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
-        plt.plot(means.numpy())
-
-    # update plots
-    plt.pause(0.001)
-
-
-# plot function to visualise downsampled slice of screen
+# UTILITIES FOR AGENT.PY
+# plot function to visualise downsampled state
 def render_state(four_frames):
     single_image = four_frames.squeeze(0)[-1]
     fig = plt.figure("Frame")
-    plt.imshow(single_image)
+    plt.imshow(single_image, cmap='gray')
     plt.title("Down-sampled image")
     plt.draw()
     plt.pause(0.001)
 
 
+# make sure all files exist if we are loading pretrained network
 def check_files(path):
     b = os.path.isfile(path + "policy_network.pt")
     b = b and os.path.isfile(path + "target_network.pt")
@@ -74,7 +54,8 @@ def check_files(path):
     return b
 
 
-# utilities for run.py
+# UTILITIES FOR RUN.PY
+# print arguments which have been configured by user to log file
 def print_args(dest, arg_dict):
     with open(dest + 'log.out', 'w') as f:
         for item in arg_dict:

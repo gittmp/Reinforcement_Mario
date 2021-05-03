@@ -21,13 +21,15 @@ class BasicMemory:
         self.buffer.append(experience)
 
     def sample(self):
-        batch = random.sample(self.buffer, self.batch_size)
+        # initialise variables
         state_batch = torch.zeros(self.batch_size, *self.state_shape)
         action_batch = torch.zeros(self.batch_size, 1)
         reward_batch = torch.zeros(self.batch_size, 1)
         successor_batch = torch.zeros(self.batch_size, *self.state_shape)
         terminal_batch = torch.zeros(self.batch_size, 1)
 
+        # sample elements to fill batch
+        batch = random.sample(self.buffer, self.batch_size)
         for i in range(self.batch_size):
             s, a, r, succ, term = batch[i]
             state_batch[i] = s
@@ -46,6 +48,9 @@ class BasicMemory:
 
         return batch
 
+    def full(self):
+        return self.size() >= self.batch_size * 100
+
     def size(self):
         return len(self.buffer)
 
@@ -61,14 +66,15 @@ class SumTreeStructure:
         self.pointer = 0
 
     # update value at internal nodes until new total held at root
-    def propagate(self, ind, delta):
+    def update_tree(self, ind, delta):
         parent = (ind - 1) // 2
         self.tree[parent] += delta
+
         if parent != 0:
-            self.propagate(parent, delta)
+            self.update_tree(parent, delta)
 
     # return an index of a sampled element, given a random input value in current section
-    def _retrieve(self, idx, s):
+    def node_index(self, idx, s):
         left = 2 * idx + 1
         right = left + 1
 
@@ -76,25 +82,26 @@ class SumTreeStructure:
             return idx
 
         if s <= float(self.tree[left]):
-            return self._retrieve(left, s)
+            return self.node_index(left, s)
         else:
-            return self._retrieve(right, s - float(self.tree[left]))
+            return self.node_index(right, s - float(self.tree[left]))
 
-    # get priority and sample
-    def get(self, l, h):
+    # get priority and experience associated with some node in the range [l, h]
+    def get_node(self, l, h):
         exp = 0
         count = 0
         while exp == 0 and count < 64:
             count += 1
             v = random.uniform(l, h)
-            idx = self._retrieve(0, v)
-            dataIdx = idx - self.maxlen + 1
-            exp = self.buffer[dataIdx]
+            idx = self.node_index(0, v)
+            pri = float(self.tree[idx])
+            exp_idx = idx - self.maxlen + 1
+            exp = self.buffer[exp_idx]
 
         if count == 64:
             return None, None, None
 
-        return idx, float(self.tree[idx]), exp
+        return idx, pri, exp
 
     def total(self):
         return float(self.tree[0])
@@ -102,7 +109,7 @@ class SumTreeStructure:
     def full(self):
         return self.length >= self.maxlen
 
-    # a new experience with its associated priority
+    # add a new experience + priority pair
     def push(self, pri, exp):
         ind = self.pointer + self.maxlen - 1
 
@@ -120,7 +127,7 @@ class SumTreeStructure:
     def update(self, ind, pri):
         delta = pri - self.tree[ind]
         self.tree[ind] = pri
-        self.propagate(ind, delta)
+        self.update_tree(ind, delta)
 
 
 # prioritised experience replay
@@ -138,42 +145,41 @@ class PrioritisedMemory:
 
     def push(self, error, sample):
         p = pow(float(torch.abs(error)) + self.epsilon, self.alpha)
-
         self.tree.push(p, sample)
 
     def full(self):
         return self.tree.full()
 
     def sample(self, n):
+        # initialise variables
+        self.tau = np.min([1.0, self.tau + self.tau_inc])
         segment = self.tree.total() / n
+
         indices = torch.zeros(n).to(self.device)
         priorities = torch.zeros(n).to(self.device)
-
-        self.tau = np.min([1.0, self.tau + self.tau_inc])
-
-        # convert batch to torch
         state_batch = torch.zeros(n, *self.state).to(self.device)
         action_batch = torch.zeros(n, 1).to(self.device)
         reward_batch = torch.zeros(n, 1).to(self.device)
         successor_batch = torch.zeros(n, *self.state).to(self.device)
         terminal_batch = torch.zeros(n, 1).to(self.device)
 
+        # sample experiences (+ priorities) for batch
         for i in range(n):
             low = segment * i
             high = segment * (i + 1)
 
-            index, priority, experience = self.tree.get(low, high)
+            index, priority, experience = self.tree.get_node(low, high)
 
             if index is None:
                 return None, None, None
 
             priorities[i] = priority
             indices[i] = index
-
             state_batch[i], action_batch[i], reward_batch[i], successor_batch[i], terminal_batch[i] = experience
 
-        sampling_probabilities = torch.div(priorities, self.tree.total())
-        weights = torch.mul(sampling_probabilities, float(self.tree.length)).to(self.device)
+        # generate weights through priority distribution
+        priority_distribution = torch.div(priorities, self.tree.total())
+        weights = torch.mul(priority_distribution, float(self.tree.length)).to(self.device)
         weights = torch.pow(weights, -self.tau)
         weights = torch.div(weights, weights.max())
 
