@@ -1,6 +1,8 @@
 import argparse
-from network import *
+
 from environment import *
+from agent import *
+from utilities import *
 
 
 def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stage=1, version=0, path=None, net=1, mem=1, env_vers=2):
@@ -38,18 +40,6 @@ def run(no_eps=10000, training=True, pretrained=False, plot=False, world=1, stag
         f.write("\nTraining complete!\n")
 
     agent.print_stats()
-
-
-def print_args(dest, arg_dict):
-    with open(dest + 'log.out', 'w') as f:
-        for item in arg_dict:
-            parameter = str(item) + ': ' + str(arg_dict[item])
-            print(parameter)
-            f.write(parameter + '\n')
-
-        print(f"path: {dest}\n")
-        f.write(f"path: {dest}")
-        f.write("\nStarting episodes...\n")
 
 
 if __name__ == '__main__':
@@ -92,7 +82,7 @@ if __name__ == '__main__':
             print(f"Loading pretrained agent from path: {path}\n")
 
     if path == '':
-        path = 'params5/'
+        path = 'params/'
         dir_count = len(list(os.listdir(path)))
         path += 'test' + str(dir_count) + '/'
         os.mkdir(path)

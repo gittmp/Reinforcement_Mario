@@ -1,96 +1,11 @@
-# adaptations to the gym_super_mario_bros environment found at https://github.com/Kautenja/gym-super-mario-bros
 import gym_super_mario_bros as SMBGym
 import numpy as np
 from nes_py.wrappers import JoypadSpace  # converting actions to correct JoyPad representation
 from collections import deque  # for deque: insert(e_new) -> [e_new, e_0, ..., e_l-2] -> exit(e_l-1)
 import gym
 import cv2  # util for image manipulation
-import matplotlib.pyplot as plt
-import torch
 
-
-# Limiting action set combinations:
-# actions for the simple run right environment
-# right + B = run; hold A = jump higher; right + A + B = running jump;
-# B = throw fire; water A = bob; down = crouch; start = play/pause;
-RIGHT = [
-    ['NOOP'],
-    ['right'],
-    ['right', 'A'],
-    ['right', 'B'],
-    ['right', 'A', 'B']
-]
-
-# actions for very simple movement
-SIMPLE = [
-    ['NOOP'],
-    ['right'],
-    ['right', 'A'],
-    ['right', 'B'],
-    ['right', 'A', 'B'],
-    ['A'],
-    ['A', 'B'],
-    ['left']
-]
-
-# actions for more complex movement
-COMPLEX = [
-    ['NOOP'],
-    ['right'],
-    ['right', 'A'],
-    ['right', 'B'],
-    ['right', 'A', 'B'],
-    ['A'],
-    ['left'],
-    ['left', 'A'],
-    ['left', 'B'],
-    ['left', 'A', 'B'],
-    ['down'],
-    ['up']
-]
-
-# Custom action combination
-ACTION_SET = [
-    ['NOOP'],
-    ['right'],
-    ['right', 'A'],
-    ['right', 'B'],
-    ['right', 'A', 'B'],
-    ['A'],
-    ['left'],
-    ['left', 'A'],
-    ['down']
-]
-
-
-# plot function which plots durations the figure during training.
-def plot_durations(ep_rewards):
-    plt.figure(2)
-    plt.clf()
-    rewards = torch.tensor(ep_rewards, dtype=torch.float)
-    plt.title('Training')
-    plt.xlabel('Episode')
-    plt.ylabel('Reward')
-    plt.plot(rewards.numpy())
-
-    # plot 100 means of episodes
-    if len(rewards) >= 100:
-        means = rewards.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
-        plt.plot(means.numpy())
-
-    # update plots
-    plt.pause(0.001)
-
-
-# plot function to visualise downsampled slice of screen
-def render_state(four_frames):
-    single_image = four_frames.squeeze(0)[-1]
-    fig = plt.figure("Frame")
-    plt.imshow(single_image)
-    plt.title("Down-sampled image")
-    plt.draw()
-    plt.pause(0.001)
+from utilities import *
 
 
 # CLASSES / FUNCTIONS FOR WRAPPING ENVIRONMENT TO IMPROVE PERFORMANCE
