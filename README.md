@@ -1,3 +1,6 @@
+# Manual
+N.B. The directory *stage5* contains the final most up-to-date implementation of my solution, all running instructions assume you are within this directory.
+
 ## run.py:
 - This is the main file for the project
 - Through this, the whole system can be run: **python3 run.py --N *n* [-t | -p --path *path*]**
