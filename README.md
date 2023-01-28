@@ -1,3 +1,4 @@
+# Learning to Play Super Mario Bros through Deep Reinforcement Learning Methods
 # Manual
 N.B. The directory *stage5* contains the final most up-to-date implementation of my solution, all running instructions assume you are within this directory.
 
